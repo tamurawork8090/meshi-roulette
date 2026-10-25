@@ -119,6 +119,7 @@ footer a{color:var(--muted)}
       <button class="btn sub" id="goShop" type="button">お店を直接決める</button>
     </div>
     <div class="status" id="msg"></div>
+    <div class="status" id="usage"></div>
   </section>
 
   <section class="card stage" id="stage" hidden aria-live="polite">
@@ -177,6 +178,17 @@ GENRES.forEach(g=>{const b=document.createElement('button');b.type='button';b.cl
 $('key').value=store.get('gkey')||'';
 $('key').onchange=()=>store.set('gkey',$('key').value.trim());
 ['yen','range'].forEach(id=>{const v=store.get(id);if(v!==null)$(id).value=v;$(id).onchange=()=>store.set(id,$(id).value)});
+/* 検索回数(この端末の分だけ)。Googleの無料枠は店検索で月1000回まで。超えると自動で有料になる */
+const FREE_LIMIT=1000;
+function usage(add){
+  const m=new Date().toISOString().slice(0,7);let u={};try{u=JSON.parse(store.get('gusage')||'{}')}catch(e){}
+  if(u.m!==m)u={m,n:0};if(add)u.n+=add;if(add)store.set('gusage',JSON.stringify(u));
+  const el=$('usage');
+  el.className='status'+(u.n>=FREE_LIMIT?' err':'');
+  el.textContent=u.n>=FREE_LIMIT
+    ?`⚠ 今月の検索は${u.n}回。無料枠（月${FREE_LIMIT}回）を超えたので、これ以降の検索は有料です（1回およそ5円）`
+    :`今月の検索: ${u.n}/${FREE_LIMIT}回（このスマホの分）。月${FREE_LIMIT}回を超えると自動で有料になります（1回およそ5円）`;
+}
 const say=(t,err)=>{$('msg').textContent=t||'';$('msg').className='status'+(err?' err':'')};
 
 /* ---------- 現在地 ---------- */
@@ -206,6 +218,7 @@ function box(lat,lng,r){const dl=r/111320,dn=r/(111320*Math.cos(lat*Math.PI/180)
 async function places(query){
   if(DEMO)return demoPlaces(query);
   const key=$('key').value.trim();if(!key)throw new Error('APIキーを入力してください（上の「APIキーの設定」）');
+  usage(1);
   let r;
   try{r=await fetch(PLACES,{method:'POST',headers:{'Content-Type':'application/json','X-Goog-Api-Key':key,'X-Goog-FieldMask':FIELDS},
     body:JSON.stringify({textQuery:query,languageCode:'ja',regionCode:'JP',includedType:'restaurant',strictTypeFiltering:false,maxResultCount:20,rankPreference:'RELEVANCE',
@@ -384,7 +397,7 @@ function fx(wrap,btn,w){
   for(let i=0;i<4;i++){const s=document.createElement('span');s.className='sp';s.textContent=['✦','＋','★','♪'][i%4];
     const a=Math.random()*Math.PI*2,d=w/2+30+Math.random()*40;s.style.cssText=`left:${cx}px;top:${cy}px;--dx:${Math.cos(a)*d}px;--dy:${Math.sin(a)*d}px`;wrap.appendChild(s);s.onanimationend=()=>s.remove()}
 }
-drawWheel();
+drawWheel();usage(0);
 </script>
 </body>
 </html>
