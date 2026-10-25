@@ -105,13 +105,14 @@ footer a{color:var(--muted)}
         <select id="range"><option value="1">300m</option><option value="2">500m</option><option value="3" selected>1km</option><option value="4">2km</option><option value="5">3km</option></select></div>
     </div>
     <label class="chk"><input type="checkbox" id="fami" checked> ファミレスを含める</label>
+    <label class="chk"><input type="checkbox" id="unk" checked> 価格が不明な店も含める</label>
     <div>
       <div class="lbl">ジャンルで絞る（選ばなければ全ジャンル。1つだけ選ぶとジャンルルーレットを飛ばす）</div>
       <div class="chips" id="chips" style="margin-top:6px"></div>
     </div>
     <details>
       <summary>APIキーの設定</summary>
-      <div class="field" style="margin-top:8px"><label for="key">ホットペッパー Webサービスのキー（この端末にだけ保存）</label><input id="key" type="password" autocomplete="off" placeholder="キーを貼り付け"></div>
+      <div class="field" style="margin-top:8px"><label for="key">Google Maps Platform のAPIキー（この端末にだけ保存）</label><input id="key" type="password" autocomplete="off" placeholder="キーを貼り付け"></div>
     </details>
     <div class="row">
       <button class="btn" id="goGenre" type="button">ジャンルから決める</button>
@@ -131,7 +132,7 @@ footer a{color:var(--muted)}
     </div>
   </section>
 
-  <footer>お店情報: <a href="http://webservice.recruit.co.jp/" target="_blank" rel="noopener">Powered by ホットペッパー Webサービス</a></footer>
+  <footer>お店情報: Google マップ（<a href="https://www.google.com/maps" target="_blank" rel="noopener">Google Maps</a>）。並びはGoogleの関連度順、予算は目安です</footer>
 </main>
 
 <div id="mash" hidden role="dialog" aria-label="もう一回の連打">
@@ -154,18 +155,14 @@ const MASH_TOTAL=TEST?30:300;          // 本番300回、?test=1 で30回
 const SHOP_COUNT=15;
 document.getElementById('ver').textContent=TEST?'テスト(30回)':'';
 
-/* ---- ジャンル(あなたが選んだ15件)。codeは初期値で、ホットペッパーのマスタ名と一致したら上書きする ---- */
+/* ---- ジャンル(あなたが選んだ15件)。qはGoogleマップの検索語 ---- */
 const GENRES=[
-  {label:'和食',match:'和食',code:'G004'},{label:'洋食',match:'洋食',code:'G005'},
-  {label:'イタリアン・フレンチ',match:'イタリアン',code:'G006'},{label:'中華',match:'中華',code:'G007'},
-  {label:'焼肉・ホルモン',match:'焼肉',code:'G008'},{label:'ラーメン',match:'ラーメン',code:'G013'},
-  {label:'韓国料理',match:'韓国',code:'G017'},{label:'アジア・エスニック',match:'アジア',code:'G009'},
-  {label:'居酒屋',match:'居酒屋',code:'G001'},{label:'お好み焼き・もんじゃ',match:'お好み焼き',code:'G016'},
-  {label:'創作料理',match:'創作',code:'G003'},{label:'各国料理',match:'各国',code:'G010'},
-  {label:'ダイニングバー・バル',match:'ダイニングバー',code:'G002'},{label:'カフェ・スイーツ',match:'カフェ',code:'G014'},
-  {label:'バー・カクテル',match:'バー・カクテル',code:'G012'}
-];
-/* ホットペッパーにファミレスのジャンルは無いので、店名で判定する */
+  ['和食','和食 日本料理'],['洋食','洋食 ハンバーグ オムライス'],['イタリアン・フレンチ','イタリアン フレンチ'],['中華','中華料理'],
+  ['焼肉・ホルモン','焼肉 ホルモン'],['ラーメン','ラーメン'],['韓国料理','韓国料理'],['アジア・エスニック','アジア料理 エスニック タイ ベトナム インド'],
+  ['居酒屋','居酒屋'],['お好み焼き・もんじゃ','お好み焼き もんじゃ'],['創作料理','創作料理'],['各国料理','各国料理 メキシコ スペイン トルコ'],
+  ['ダイニングバー・バル','ダイニングバー バル'],['カフェ・スイーツ','カフェ スイーツ'],['バー・カクテル','バー カクテル']
+].map(([label,q])=>({label,q,code:label}));
+/* ファミレスという分類は無いので、店名で判定する */
 const FAMIRE=['ガスト','サイゼリヤ','サイゼ','デニーズ','ジョナサン','バーミヤン','ココス','ロイヤルホスト','ジョイフル','夢庵','びっくりドンキー','ビッグボーイ','藍屋','しゃぶ葉','ステーキガスト','から好し','ホリーズ','フジオフード','洋食屋ガスト'];
 
 const $=id=>document.getElementById(id);
@@ -177,8 +174,8 @@ const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},se
 const chipsEl=$('chips');
 GENRES.forEach(g=>{const b=document.createElement('button');b.type='button';b.className='chip';b.textContent=g.label;b.setAttribute('aria-pressed','false');
   b.onclick=()=>b.setAttribute('aria-pressed',b.getAttribute('aria-pressed')==='true'?'false':'true');g.el=b;chipsEl.appendChild(b)});
-$('key').value=store.get('hpkey')||'';
-$('key').onchange=()=>store.set('hpkey',$('key').value.trim());
+$('key').value=store.get('gkey')||'';
+$('key').onchange=()=>store.set('gkey',$('key').value.trim());
 ['yen','range'].forEach(id=>{const v=store.get(id);if(v!==null)$(id).value=v;$(id).onchange=()=>store.set(id,$(id).value)});
 const say=(t,err)=>{$('msg').textContent=t||'';$('msg').className='status'+(err?' err':'')};
 
@@ -197,75 +194,63 @@ function getLoc(){
 }
 $('loc').onclick=()=>getLoc().catch(e=>say(e.message,true));
 
-/* ---------- ホットペッパーAPI ---------- */
-const API='https://webservice.recruit.co.jp/hotpepper/';
-let jid=0;
-function jsonp(url){
-  return new Promise((res,rej)=>{
-    const name='__hp'+(++jid);const s=document.createElement('script');
-    const t=setTimeout(()=>{cleanup();rej(new Error('timeout'))},12000);
-    function cleanup(){clearTimeout(t);delete window[name];s.remove()}
-    window[name]=d=>{cleanup();res(d)};
-    s.onerror=()=>{cleanup();rej(new Error('script'))};
-    s.src=url+'&callback='+name;document.head.appendChild(s);
-  });
-}
-async function hp(path,params){
-  if(DEMO)return demoApi(path,params);
+/* ---------- Google Places API (New) ---------- */
+const PLACES='https://places.googleapis.com/v1/places:searchText';
+const FIELDS=['places.id','places.displayName','places.shortFormattedAddress','places.location','places.rating','places.userRatingCount',
+  'places.priceRange','places.priceLevel','places.googleMapsUri','places.primaryTypeDisplayName','places.businessStatus'].join(',');
+const RADIUS={1:300,2:500,3:1000,4:2000,5:3000};
+/* 価格レベル→1人あたりの目安(円)。日本の実勢に合わせた私の目安で、Googleの公式の換算ではない */
+const LEVEL={PRICE_LEVEL_FREE:[0,0],PRICE_LEVEL_INEXPENSIVE:[0,1500],PRICE_LEVEL_MODERATE:[1000,3500],PRICE_LEVEL_EXPENSIVE:[3000,8000],PRICE_LEVEL_VERY_EXPENSIVE:[7000,1e9]};
+function box(lat,lng,r){const dl=r/111320,dn=r/(111320*Math.cos(lat*Math.PI/180));
+  return {rectangle:{low:{latitude:lat-dl,longitude:lng-dn},high:{latitude:lat+dl,longitude:lng+dn}}}}
+async function places(query){
+  if(DEMO)return demoPlaces(query);
   const key=$('key').value.trim();if(!key)throw new Error('APIキーを入力してください（上の「APIキーの設定」）');
-  const q=new URLSearchParams({key,format:'json',...params});const url=API+path+'/v1/?'+q;
-  let d;
-  try{d=await jsonp(url)}catch(e1){
-    try{const r=await fetch(url);d=await r.json()}catch(e2){throw new Error('お店の情報を取得できませんでした（通信方式を確認が必要）')}
-  }
-  const er=d&&d.results&&d.results.error;
-  if(er&&er.length)throw new Error('ホットペッパーのエラー: '+er[0].message+'（'+er[0].code+'）');
-  return d.results;
+  let r;
+  try{r=await fetch(PLACES,{method:'POST',headers:{'Content-Type':'application/json','X-Goog-Api-Key':key,'X-Goog-FieldMask':FIELDS},
+    body:JSON.stringify({textQuery:query,languageCode:'ja',regionCode:'JP',includedType:'restaurant',strictTypeFiltering:false,maxResultCount:20,rankPreference:'RELEVANCE',
+      locationRestriction:box(st.lat,st.lng,RADIUS[$('range').value])})})}
+  catch(e){throw new Error('通信できませんでした（電波、またはキーの「ウェブサイトの制限」の設定を確認）')}
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok)throw new Error('Googleのエラー: '+((d.error&&d.error.message)||r.status)+'（'+r.status+'）');
+  return d.places||[];
 }
-let masters=null;
-async function loadMasters(){
-  if(masters)return masters;
-  const c=store.get('hpmasters');
-  if(c){try{masters=JSON.parse(c);if(masters.t>Date.now()-30*864e5)return applyMasters(masters)}catch(e){}}
-  const [g,b]=await Promise.all([hp('genre',{}),hp('budget',{})]);
-  masters={t:Date.now(),genre:g.genre,budget:b.budget};store.set('hpmasters',JSON.stringify(masters));
-  return applyMasters(masters);
-}
-function applyMasters(m){
-  GENRES.forEach(g=>{const f=m.genre.find(x=>x.name.includes(g.match));if(f)g.code=f.code});
-  m.bands=m.budget.map(x=>{const n=(x.name.match(/\d+/g)||[]).map(Number);const lo=x.name.startsWith('～')||x.name.startsWith('~')?0:n[0];
-    const hi=/円～$|円~$/.test(x.name)&&n.length===1?Infinity:(n.length>1?n[1]:n[0]);return {code:x.code,lo:lo,hi:hi}}).filter(x=>isFinite(x.lo)).sort((a,b)=>a.lo-b.lo);
-  return m;
-}
-/* 予算前後: 金額が入る区分と、金額が区分の端に近い側の隣の区分（最大2つ） */
-function budgetCodes(yen){
-  const b=masters.bands;if(!b||!b.length||!(yen>0))return [];
-  let i=b.findIndex(x=>yen>=x.lo&&yen<=x.hi);if(i<0)i=b.length-1;
-  const mid=(b[i].lo+Math.min(b[i].hi,b[i].lo*1.5))/2;
-  const j=yen>=mid?i+1:i-1;const codes=[b[i].code];if(b[j])codes.push(b[j].code);return codes;
+/* 金額前後 = 入力額の70%〜130%。価格が分からない店は、チェックがあるときだけ残す */
+function priceOk(p,yen){
+  if(!(yen>0))return true;
+  const lo=yen*.7,hi=yen*1.3;let a,b;
+  if(p.priceRange){a=+((p.priceRange.startPrice||{}).units||0);b=p.priceRange.endPrice?+(p.priceRange.endPrice.units||0):1e9}
+  else if(p.priceLevel&&LEVEL[p.priceLevel])[a,b]=LEVEL[p.priceLevel];
+  else return $('unk').checked;
+  return a<=hi&&b>=lo;
 }
 const dist=(a,b,c,d)=>{const R=6371e3,r=x=>x*Math.PI/180,dl=r(c-a),dn=r(d-b);const h=Math.sin(dl/2)**2+Math.cos(r(a))*Math.cos(r(c))*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(h))};
-async function fetchShops(genreCodes){
-  await loadMasters();
-  const base={lat:st.lat,lng:st.lng,range:$('range').value,count:100,type:'lite'};
-  const bc=budgetCodes(+$('yen').value);if(bc.length)base.budget=bc.join(',');
-  const lists=await Promise.all((genreCodes&&genreCodes.length?genreCodes:[null]).map(c=>hp('gourmet',c?{...base,genre:c}:base)));
-  const seen=new Map();lists.forEach(r=>(r.shop||[]).forEach(s=>seen.set(s.id,s)));
-  let arr=[...seen.values()];
-  if(!$('fami').checked)arr=arr.filter(s=>!FAMIRE.some(w=>s.name.includes(w)));
-  arr.forEach(s=>s._d=dist(st.lat,st.lng,+s.lat,+s.lng));arr.sort((a,b)=>a._d-b._d);
-  return arr.slice(0,SHOP_COUNT);
+function priceText(p){
+  if(p.priceRange){const s=(p.priceRange.startPrice||{}).units,e=(p.priceRange.endPrice||{}).units;return `約${s||0}〜${e?e+'円':'円以上'}`.replace('円〜','〜')}
+  const m={PRICE_LEVEL_FREE:'無料',PRICE_LEVEL_INEXPENSIVE:'安め(目安〜1,500円)',PRICE_LEVEL_MODERATE:'ふつう(目安1,000〜3,500円)',PRICE_LEVEL_EXPENSIVE:'高め(目安3,000〜8,000円)',PRICE_LEVEL_VERY_EXPENSIVE:'かなり高め(目安7,000円〜)'};
+  return m[p.priceLevel]||'価格は不明';
+}
+/* 関連度順(Googleの並び)で、条件に合う上位15件 */
+async function fetchShops(genres){
+  const lists=await Promise.all((genres&&genres.length?genres:[{q:'レストラン'}]).map(g=>places(g.q)));
+  const seen=new Map();lists.forEach(l=>l.forEach(p=>{if(!seen.has(p.id))seen.set(p.id,p)}));
+  const yen=+$('yen').value;
+  let arr=[...seen.values()].filter(p=>(!p.businessStatus||p.businessStatus==='OPERATIONAL')&&p.displayName);
+  if(!$('fami').checked)arr=arr.filter(p=>!FAMIRE.some(w=>p.displayName.text.includes(w)));
+  arr=arr.filter(p=>priceOk(p,yen));
+  return arr.slice(0,SHOP_COUNT).map(p=>({name:p.displayName.text,genre:p.primaryTypeDisplayName&&p.primaryTypeDisplayName.text,price:priceText(p),
+    rating:p.rating?`★${p.rating}（${p.userRatingCount||0}件）`:'',area:p.shortFormattedAddress||'',url:p.googleMapsUri,
+    _d:p.location?dist(st.lat,st.lng,p.location.latitude,p.location.longitude):0}));
 }
 
 /* デモ用のにせデータ（?demo=1 のときだけ使う） */
-function demoApi(path,p){
-  if(path==='genre')return Promise.resolve({genre:[['G001','居酒屋'],['G002','ダイニングバー・バル'],['G003','創作料理'],['G004','和食'],['G005','洋食'],['G006','イタリアン・フレンチ'],['G007','中華'],['G008','焼肉・ホルモン'],['G009','アジア・エスニック料理'],['G010','各国料理'],['G012','バー・カクテル'],['G013','ラーメン'],['G014','カフェ・スイーツ'],['G016','お好み焼き・もんじゃ'],['G017','韓国料理']].map(([code,name])=>({code,name}))});
-  if(path==='budget')return Promise.resolve({budget:[['B009','～500円'],['B010','501～1000円'],['B011','1001～1500円'],['B001','1501～2000円'],['B002','2001～3000円'],['B003','3001～4000円'],['B008','4001～5000円']].map(([code,name])=>({code,name}))});
+function demoPlaces(q){
   const names=['麺屋 さくら亭','ガスト 駅前店','中華 龍門','トラットリア ソーレ','焼肉 大黒','和食 ほたる','サイゼリヤ 大通り店','韓国食堂 ソウル','洋食 グリル青木','カフェ ひだまり','居酒屋 とりまる','もんじゃ 月島屋','創作 一献','バル ラ・ルナ','ラーメン 一心','タイ食堂 ミンガラ','寿司 かもめ','定食 まんぷく','ステーキ 肉匠','うどん 讃岐や'];
-  const n=Math.min(100,(p.genre==='G005'?0:20));const shop=[];
-  for(let i=0;i<n;i++)shop.push({id:'d'+(p.genre||'x')+i,name:names[i%names.length]+(i>=names.length?'2号店':''),lat:st.lat+(i%7-3)*.0006,lng:st.lng+(i%5-2)*.0006,
-    genre:{name:p.genre||'デモ'},budget:{name:'1001～1500円'},access:'デモ駅 徒歩'+(i+2)+'分',urls:{pc:'https://www.hotpepper.jp/'}});
-  return new Promise(r=>setTimeout(()=>r({shop}),300));
+  const lv=['PRICE_LEVEL_INEXPENSIVE','PRICE_LEVEL_MODERATE','PRICE_LEVEL_EXPENSIVE',undefined];
+  const n=q.startsWith('洋食')?0:20;const out=[];
+  for(let i=0;i<n;i++)out.push({id:'d'+q+i,displayName:{text:names[i%names.length]+(i>=names.length?'2号店':'')},location:{latitude:st.lat+(i%7-3)*.0006,longitude:st.lng+(i%5-2)*.0006},
+    rating:3.5+(i%6)/4,userRatingCount:20+i*7,priceLevel:lv[i%4],primaryTypeDisplayName:{text:q.split(' ')[0]},shortFormattedAddress:'デモ町'+(i+1)+'丁目',googleMapsUri:'https://maps.google.com/',businessStatus:'OPERATIONAL'});
+  return new Promise(r=>setTimeout(()=>r(out),300));
 }
 
 /* ---------- ルーレット ---------- */
@@ -305,18 +290,17 @@ function setWheel(labels,title){wheelLabels=labels;$('stage').hidden=false;$('st
 function setBusy(b){st.busy=b;['goGenre','goShop','againShop','againGenre','loc'].forEach(id=>$(id).disabled=b)}
 function pool(){const sel=GENRES.filter(g=>g.el.getAttribute('aria-pressed')==='true');return sel.length?sel:GENRES}
 async function runShop(genres,reuse){
-  if(!reuse){say('お店を探しています…');st.shops=await fetchShops(genres&&genres.map(g=>g.code));say('')}
+  if(!reuse){say('お店を探しています…');st.shops=await fetchShops(genres);say('')}
   if(!st.shops.length)return 'empty';
   setWheel(st.shops.map(s=>s.name),genres&&genres.length===1?`お店ルーレット（${genres[0].label}）`:'お店ルーレット');
   const i=await spin(),s=st.shops[i];
   $('result').textContent='🎯 '+s.name;
-  const m=`https://www.google.com/maps/search/?api=1&query=${s.lat},${s.lng}`;
   const sh=$('shop');sh.innerHTML='';
   const add=(cls,txt)=>{const d=document.createElement('div');d.className=cls;d.textContent=txt;sh.appendChild(d)};
-  add('meta',[s.genre&&s.genre.name,s.budget&&(s.budget.average||s.budget.name),s.access].filter(Boolean).join(' ／ '));
-  add('meta',`現在地から約${Math.round(s._d||0)}m`);
+  add('meta',[s.genre,s.price,s.rating].filter(Boolean).join(' ／ '));
+  add('meta',`${s.area?s.area+' ／ ':''}現在地から約${Math.round(s._d||0)}m`);
   const lk=document.createElement('div');lk.className='row';
-  [['ホットペッパーで見る',s.urls&&s.urls.pc],['地図で見る',m]].forEach(([t,u])=>{if(!u)return;const a=document.createElement('a');a.href=u;a.target='_blank';a.rel='noopener';a.textContent=t;lk.appendChild(a)});
+  [['Googleマップで見る',s.url]].forEach(([t,u])=>{if(!u)return;const a=document.createElement('a');a.href=u;a.target='_blank';a.rel='noopener';a.textContent=t;lk.appendChild(a)});
   sh.appendChild(lk);sh.hidden=false;
   return 'ok';
 }
@@ -334,7 +318,6 @@ async function start(mode){
   say('');setBusy(true);
   try{
     if(st.lat==null)await getLoc();
-    await loadMasters();
     st.mode=mode;st.empty=new Set();
     const p=pool(),sel=GENRES.filter(g=>g.el.getAttribute('aria-pressed')==='true');
     st.single=sel.length===1;
