@@ -242,17 +242,17 @@ const RADIUS={1:300,2:500,3:1000,4:2000,5:3000};
 const LEVEL={PRICE_LEVEL_FREE:[0,0],PRICE_LEVEL_INEXPENSIVE:[0,1500],PRICE_LEVEL_MODERATE:[1000,3500],PRICE_LEVEL_EXPENSIVE:[3000,8000],PRICE_LEVEL_VERY_EXPENSIVE:[7000,1e9]};
 function box(lat,lng,r){const dl=r/111320,dn=r/(111320*Math.cos(lat*Math.PI/180));
   return {rectangle:{low:{latitude:lat-dl,longitude:lng-dn},high:{latitude:lat+dl,longitude:lng+dn}}}}
-async function places(query){
-  if(DEMO)return demoPlaces(query);
+async function placesMany(queries){
+  if(DEMO)return Promise.all(queries.map(demoPlaces));
   let r;
   try{r=await fetch(WORKER+'/search',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({textQuery:query,locationRestriction:box(st.lat,st.lng,RADIUS[$('range').value])})})}
+    body:JSON.stringify({textQueries:queries,locationRestriction:box(st.lat,st.lng,RADIUS[$('range').value])})})}
   catch(e){throw new Error('通信できませんでした（電波を確認してください）')}
   const d=await r.json().catch(()=>({}));
   if(d._usage)showUsage(d._usage.n,d._usage.limit);
   if(r.status===429){if(d.n!=null)showUsage(d.n,d.limit);throw new Error(d.error||'今月の検索の上限に達しました')}
   if(!r.ok)throw new Error('検索できませんでした: '+((d.error&&(d.error.message||d.error))||r.status)+'（'+r.status+'）');
-  return d.places||[];
+  return d.results||[];
 }
 /* 金額前後 = 入力額の70%〜130%。価格が分からない店は、チェックがあるときだけ残す */
 function priceOk(p,yen){
@@ -275,9 +275,8 @@ function kitchenClose(p){const h=(p.currentSecondaryOpeningHours||[]).find(x=>x.
 function closeTime(p){const t=p.currentOpeningHours&&p.currentOpeningHours.nextCloseTime;if(!t)return '';
   try{return new Date(t).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Tokyo'})}catch(e){return ''}}
 /* 関連度順(Googleの並び)で、今やっている店のうち条件に合う上位15件 */
-async function fetchShops(genres){
-  const lists=await Promise.all((genres&&genres.length?genres:[{q:'レストラン'}]).map(g=>places(g.q)));
-  const seen=new Map();lists.forEach(l=>l.forEach(p=>{if(!seen.has(p.id))seen.set(p.id,p)}));
+function filterShops(list){
+  const seen=new Map();list.forEach(p=>{if(!seen.has(p.id))seen.set(p.id,p)});
   const yen=+$('yen').value;
   /* 今やっている店だけ。営業時間が分からない店は、営業中と確認できないので除く */
   let arr=[...seen.values()].filter(p=>(!p.businessStatus||p.businessStatus==='OPERATIONAL')&&p.displayName&&p.currentOpeningHours&&p.currentOpeningHours.openNow===true);
@@ -287,6 +286,10 @@ async function fetchShops(genres){
   return arr.slice(0,SHOP_COUNT).map(p=>({name:p.displayName.text,genre:p.primaryTypeDisplayName&&p.primaryTypeDisplayName.text,price:priceText(p),
     rating:p.rating?`★${p.rating}（${p.userRatingCount||0}件）`:'',url:p.googleMapsUri,site:p.websiteUri,close:closeTime(p),priceUnknown:!p.priceRange&&!(p.priceLevel&&LEVEL[p.priceLevel]),kitchen:kitchenClose(p),
     _d:p.location?dist(st.lat,st.lng,p.location.latitude,p.location.longitude):0}));
+}
+async function fetchShops(genres){
+  const lists=await placesMany((genres&&genres.length?genres:[{q:'レストラン'}]).map(g=>g.q));
+  return filterShops(lists.flat());
 }
 
 /* デモ用のにせデータ（?demo=1 のときだけ使う） */
@@ -380,13 +383,23 @@ async function runShop(genres,reuse){
   sh.appendChild(lk);sh.hidden=false;
   return 'ok';
 }
+/* ジャンルルーレットに出す前に、各ジャンルの店を調べる。今やっている店が1つも無いジャンルは、最初から出さない */
+async function loadGenres(){
+  const p=pool();
+  setBusy(true);showLoading(true,'ジャンルルーレット','ジャンルごとのお店を調べています…');
+  try{
+    const lists=await placesMany(p.map(g=>g.q));
+    st.byGenre=new Map();
+    p.forEach((g,i)=>{const shops=filterShops(lists[i]||[]);if(shops.length)st.byGenre.set(g.label,shops)});
+  }finally{setBusy(false);showLoading(false)}
+}
 async function runGenre(){
-  const p=pool().filter(g=>!st.empty.has(g.code));
-  if(!p.length){say('近くに条件に合うジャンルがありません。予算や範囲を変えてください',true);return}
+  const p=pool().filter(g=>st.byGenre&&st.byGenre.has(g.label));
+  if(!p.length){say('今やっていて条件に合う店があるジャンルがありません。予算・範囲を変えてください',true);return}
   setWheel(p.map(g=>g.label),'ジャンルルーレット');
   const g=p[await playWheel()];st.genre=g;
-  const r=await runShop([g]);          // ジャンルが決まったら、そのジャンルの店を取得してお店ルーレットを出す（回すのはタップしてから）
-  if(r==='empty'){st.empty.add(g.code);say(`${g.label}は今やっている店が無いので、ジャンルをやり直します`);await sleep(1600);say('');return runGenre()}
+  st.shops=st.byGenre.get(g.label);st.shopTitle=`お店ルーレット（${g.label}）`;
+  await runShop(null,true);            // 店は調べ済み。お店ルーレットを出して、タップを待つ
   $('againGenre').hidden=false;
 }
 async function start(mode){
@@ -397,7 +410,7 @@ async function start(mode){
     st.mode=mode;st.empty=new Set();
     const sel=GENRES.filter(g=>g.el.getAttribute('aria-pressed')==='true');
     st.single=sel.length===1;
-    if(mode==='genre'&&!st.single){await runGenre()}
+    if(mode==='genre'&&!st.single){await loadGenres();await runGenre()}
     else{const gs=mode==='genre'?sel:(sel.length?sel:null);const r=await runShop(gs);if(r==='empty')say('今やっている店が見つかりません。予算・範囲・ジャンルを変えてください',true)}
     afterRun();
   }catch(e){if(e!==CANCEL)say(e.message,true)}
