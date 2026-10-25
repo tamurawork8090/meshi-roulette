@@ -421,7 +421,7 @@ function playWheel(){
     cv.onpointerdown=onTap;hint.onpointerdown=onTap;
   });
 }
-/* 花吹雪（桜の花びらと紙吹雪）。押す操作は邪魔しない */
+/* クラッカーのように、画面の中心から四方に飛び出す花吹雪（桜の花びらと紙吹雪）。押す操作は邪魔しない */
 let cfRun=null;
 function confetti(ms){
   try{if(matchMedia('(prefers-reduced-motion: reduce)').matches)return}catch(e){}
@@ -430,22 +430,29 @@ function confetti(ms){
   const dpr=Math.min(window.devicePixelRatio||1,2),W=innerWidth,H=innerHeight;cv2.width=W*dpr;cv2.height=H*dpr;
   const c=cv2.getContext('2d');c.setTransform(dpr,0,0,dpr,0,0);
   const cols=['#ffb7c5','#ff8fab','#ffd166','#06d6a0','#4cc9f0','#f72585','#ffffff','#b8f2e6'];
-  const mk=(i)=>({x:Math.random()*W,y:-20-Math.random()*H*.5,vx:(Math.random()-.5)*90,vy:110+Math.random()*190,
-    w:7+Math.random()*9,h:5+Math.random()*7,r:Math.random()*6.28,vr:(Math.random()-.5)*8,ph:Math.random()*6.28,fr:1+Math.random()*2.5,
-    petal:i%3===0,col:i%3===0?cols[Math.floor(Math.random()*2)]:cols[Math.floor(Math.random()*cols.length)]});
-  const ps=Array.from({length:150},(_,i)=>mk(i));
+  const cx=W/2,cy=H*.42,reach=Math.max(W,H);
+  const mk=(i,delay)=>{const ang=Math.random()*6.2832,sp=reach*(.55+Math.random()*1.05);   // 速さ: 画面の大きさに合わせる
+    return {x:cx,y:cy,vx:Math.cos(ang)*sp,vy:Math.sin(ang)*sp-reach*.25,delay,
+    w:7+Math.random()*9,h:5+Math.random()*7,r:Math.random()*6.28,vr:(Math.random()-.5)*14,ph:Math.random()*6.28,fr:1+Math.random()*2.5,
+    petal:i%3===0,col:i%3===0?cols[Math.floor(Math.random()*2)]:cols[Math.floor(Math.random()*cols.length)]}};
+  // 2回に分けて打ち上げる（ドン、ドン）
+  const ps=[...Array.from({length:110},(_,i)=>mk(i,0)),...Array.from({length:70},(_,i)=>mk(i,.28))];
   const t0=performance.now();let last=t0;
   cancelAnimationFrame(cfRun);
   (function f(now){
-    const dt=Math.min((now-last)/1000,.05);last=now;c.clearRect(0,0,W,H);let alive=0;
+    const dt=Math.min((now-last)/1000,.05);last=now;const el=(now-t0)/1000;c.clearRect(0,0,W,H);let alive=0;
+    const fade=Math.max(0,Math.min(1,(ms/1000-el)/.8));          // 終わりに近づくと薄くなる
     ps.forEach(q=>{
-      q.y+=q.vy*dt;q.x+=q.vx*dt+Math.sin(now/1000*q.fr+q.ph)*40*dt;q.r+=q.vr*dt;
-      if(q.y<H+30){alive++;
-        c.save();c.translate(q.x,q.y);c.rotate(q.r);c.fillStyle=q.col;
+      if(el<q.delay){alive++;return}
+      const drag=Math.pow(.18,dt);                                // 空気抵抗（飛び出しはすぐに減速）
+      q.vx*=drag;q.vy*=drag;q.vy+=reach*.55*dt;                   // 重力
+      q.x+=q.vx*dt+Math.sin(now/1000*q.fr+q.ph)*30*dt;q.y+=q.vy*dt;q.r+=q.vr*dt;
+      if(q.y<H+30&&q.x>-30&&q.x<W+30){alive++;
+        c.save();c.globalAlpha=fade;c.translate(q.x,q.y);c.rotate(q.r);c.fillStyle=q.col;
         if(q.petal){c.beginPath();c.ellipse(0,0,q.w*.75,q.h*.5,0,0,6.28);c.fill()}else{c.fillRect(-q.w/2,-q.h/2,q.w,q.h)}
         c.restore()}
     });
-    if(now-t0<ms&&alive>0)cfRun=requestAnimationFrame(f);else c.clearRect(0,0,W,H);
+    if(el<ms/1000&&alive>0)cfRun=requestAnimationFrame(f);else c.clearRect(0,0,W,H);
   })(t0);
 }
 /* 結果をでかでかと出す（ルーレットは隠す） */
