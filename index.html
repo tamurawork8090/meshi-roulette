@@ -149,6 +149,7 @@ details summary{padding:4px 0;font-size:15px}
       <button class="btn ghost" id="loc" type="button">📍 現在地を取得</button>
       <span class="status" id="locst">現在地はまだ取得していません</span>
     </div>
+    <div class="field"><label for="place">場所を指定（駅名・住所。空欄なら現在地）</label><input id="place" type="text" placeholder="例: 池袋駅" autocomplete="off"></div>
     <div class="row">
       <div class="field"><label for="yen">1人の予算（円）</label><input id="yen" type="number" inputmode="numeric" min="0" step="100" value="1500"></div>
       <div class="field"><label for="range">探す範囲</label>
@@ -229,14 +230,14 @@ const FAMIRE=['ガスト','サイゼリヤ','サイゼ','デニーズ','ジョ�
 
 const $=id=>document.getElementById(id);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-const st={round:0,lat:null,lng:null,busy:false,mode:null,genre:null,shops:[],lastPool:null,empty:new Set(),single:false};
+const st={round:0,src:null,lat:null,lng:null,busy:false,mode:null,genre:null,shops:[],lastPool:null,empty:new Set(),single:false};
 const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
 /* テスト中は、取得済みの店（ブラウザに保存）だけで動かし、検索し直さない（デモとは別に保存） */
 const CK='meshiTestAll'+(DEMO?'-demo':'');
 let cacheAll=null;
 if(ANYTIME){try{const v=JSON.parse(store.get(CK)||'null');if(Array.isArray(v)&&v.length)cacheAll=v}catch(e){}}
 function updCache(){const el=document.getElementById('cachest');if(el)el.textContent=cacheAll?`テスト: 取得済みの${cacheAll.length}件だけで動かします（検索し直しません）`:'テスト: まだ取得していません（最初の1回だけ検索して保存します）'}
-function saveCache(list){const seen=new Map();(cacheAll||[]).concat(list).forEach(x=>{if(!seen.has(x.id))seen.set(x.id,x)});cacheAll=[...seen.values()];store.set(CK,JSON.stringify(cacheAll));updCache()}
+function saveCache(list){const seen=new Map();(cacheAll||[]).concat(list).forEach(x=>{if(!seen.has(x.id))seen.set(x.id,x)});cacheAll=[...seen.values()];store.set(CK,JSON.stringify(cacheAll));store.set(CK+'src',String(st.src));updCache()}
 
 /* ---------- 画面の部品 ---------- */
 const chipsEl=$('chips');
@@ -277,7 +278,22 @@ function getLoc(){
     {enableHighAccuracy:true,timeout:12000,maximumAge:60000});
   });
 }
-$('loc').onclick=()=>getLoc().catch(e=>say(e.message,true));
+async function geocode(q){
+  if(DEMO)return {name:q,address:'（デモ）',lat:35.7295,lng:139.7109};
+  const d=await callWorker('/geocode',{query:q});
+  if(!d.place)throw new Error(`「${q}」の場所が見つかりませんでした。駅名や住所を変えてください`);
+  return d.place;
+}
+/* 検索する場所の元（現在地 'gps' か、指定した場所の名前）が変わったら、位置を取り直す */
+async function resolveSource(my){
+  const q=$('place').value.trim(),want=q||'gps';
+  if(st.src===want&&st.lat!=null)return;
+  if(q){const pl=await geocode(q);if(my!==st.round)throw CANCEL;st.lat=pl.lat;st.lng=pl.lng;$('locst').textContent=`場所: ${pl.name}${pl.address?`（${pl.address}）`:''}`}
+  else{await getLoc();if(my!==st.round)throw CANCEL}
+  st.src=want;
+  if(cacheAll&&store.get(CK+'src')!==want){cacheAll=null;store.set(CK,'');updCache()}   // テスト用の保存は、別の場所のものなら捨てる
+}
+$('loc').onclick=async()=>{$('place').value='';try{await getLoc();st.src='gps';if(cacheAll&&store.get(CK+'src')!=='gps'){cacheAll=null;store.set(CK,'');updCache()}}catch(e){say(e.message,true)}};
 
 /* ---------- Google Places API (New) ---------- */
 const RADIUS={1:300,2:500,3:1000,4:2000,5:3000};
@@ -584,7 +600,7 @@ async function start(mode){
   const my=++st.round;                 // 押した瞬間に、進行中の処理は破棄して最初からやり直す
   cancelWheel();say('');$('opts').hidden=true;$('optbtn').hidden=false;document.body.classList.add('round');
   try{
-    if(st.lat==null){await getLoc();if(my!==st.round)throw CANCEL}
+    await resolveSource(my);
     st.mode=mode;
     const sel=selected();
     st.single=sel.length===1;
