@@ -111,6 +111,7 @@ button.btn.small{flex:0 0 auto;font-size:14px;padding:8px 12px}
 .wheelbox{width:clamp(180px,calc(100vh - 440px),400px);max-width:100%}
 @supports (height:100dvh){.wheelbox{width:clamp(180px,calc(100dvh - 440px),400px);max-width:100%}}
 .hint{font-size:15px;min-height:20px}
+.hint.tap{cursor:pointer;touch-action:manipulation;user-select:none;-webkit-user-select:none;padding:8px 24px;border-radius:10px;background:color-mix(in srgb,var(--accent) 14%,transparent)}
 .result{font-size:21px;min-height:28px}
 .shop{gap:2px;align-items:center;text-align:center}
 .shop .meta{font-size:13px}
@@ -391,8 +392,8 @@ function playWheel(){
   return new Promise((res,rej)=>{
     let phase='idle',v=0,raf=0,last=0,tStart=0,t0=0,v0=0,a0=0,T=0;
     const VMAX=11,hint=$('hint');
-    hint.textContent='ルーレットをタップして回す';cv.classList.add('tap');
-    const end=()=>{cancelAnimationFrame(raf);cv.onpointerdown=null;cv.classList.remove('tap')};
+    hint.textContent='ルーレットをタップして回す';cv.classList.add('tap');hint.classList.add('tap');
+    const end=()=>{cancelAnimationFrame(raf);cv.onpointerdown=null;hint.onpointerdown=null;cv.classList.remove('tap');hint.classList.remove('tap')};
     ctl=()=>{end();rej(CANCEL)};
     function frame(now){
       if(phase==='spin'){const dt=Math.min((now-last)/1000,.05);last=now;v=Math.min(VMAX,v+VMAX*dt/.7);angle+=v*dt}
@@ -402,11 +403,12 @@ function playWheel(){
       }
       drawWheel();raf=requestAnimationFrame(frame);
     }
-    cv.onpointerdown=ev=>{
+    const onTap=ev=>{      // ルーレットでも、その下の文字でも、同じように反応する
       ev.preventDefault();const now=performance.now();
       if(phase==='idle'){phase='spin';tStart=last=now;hint.textContent='もう一度タップして止める';raf=requestAnimationFrame(frame)}
-      else if(phase==='spin'&&now-tStart>400){phase='stop';hint.textContent='';t0=now;v0=v;a0=angle;T=2.4+Math.random()*1.2}
+      else if(phase==='spin'&&now-tStart>400){phase='stop';hint.textContent='';hint.classList.remove('tap');t0=now;v0=v;a0=angle;T=2.4+Math.random()*1.2}
     };
+    cv.onpointerdown=onTap;hint.onpointerdown=onTap;
   });
 }
 /* ルーレットを作って表示する。回さない（タップ待ち） */
