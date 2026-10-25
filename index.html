@@ -63,6 +63,15 @@ details summary{cursor:pointer;font-size:14px;color:var(--muted)}
 footer{font-size:12px;color:var(--muted);text-align:center}
 footer a{color:var(--muted)}
 
+[hidden]{display:none!important}
+.hub,.pointer{pointer-events:none}
+.wheelbox canvas.tap{cursor:pointer;touch-action:manipulation}
+.hint{font-family:var(--display);font-weight:900;font-size:17px;color:var(--accent);min-height:26px;text-align:center}
+.loading{display:flex;align-items:center;gap:12px;font-family:var(--display);font-weight:900;font-size:18px;padding:56px 0}
+.loading .spin{width:26px;height:26px;border-radius:50%;border:4px solid var(--line);border-top-color:var(--accent);animation:rot .8s linear infinite}
+@keyframes rot{to{transform:rotate(360deg)}}
+a.lk{display:inline-block;padding:10px 14px;border:1.5px solid var(--accent);border-radius:10px;color:var(--accent);font-weight:700;text-decoration:none;font-size:15px}
+@media (prefers-reduced-motion:reduce){.loading .spin{animation:none}}
 /* 連打画面 */
 #mash{position:fixed;inset:0;z-index:50;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
   padding:max(16px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px));overflow:hidden;user-select:none;-webkit-user-select:none}
@@ -124,7 +133,9 @@ footer a{color:var(--muted)}
 
   <section class="card stage" id="stage" hidden aria-live="polite">
     <h2 id="stitle"></h2>
-    <div class="wheelbox"><div class="pointer"></div><canvas id="cv" width="800" height="800"></canvas><div class="hub"></div></div>
+    <div class="loading" id="loading" hidden><span class="spin"></span><span id="loadtxt">お店を取得中…</span></div>
+    <div class="wheelbox" id="wheelbox"><div class="pointer"></div><canvas id="cv" width="800" height="800"></canvas><div class="hub"></div></div>
+    <div class="hint" id="hint"></div>
     <div class="result" id="result"></div>
     <div class="shop" id="shop" hidden></div>
     <div class="row" id="again" hidden style="width:100%">
@@ -133,7 +144,7 @@ footer a{color:var(--muted)}
     </div>
   </section>
 
-  <footer>お店情報: Google マップ（<a href="https://www.google.com/maps" target="_blank" rel="noopener">Google Maps</a>）。並びはGoogleの関連度順、予算は目安です</footer>
+  <footer>お店情報: Google マップ（<a href="https://www.google.com/maps" target="_blank" rel="noopener">Google Maps</a>）。今やっている店だけ。並びはGoogleの関連度順、予算は目安です</footer>
 </main>
 
 <div id="mash" hidden role="dialog" aria-label="もう一回の連打">
@@ -143,8 +154,8 @@ footer a{color:var(--muted)}
   <div class="bar"><i id="mbar"></i></div>
   <div class="stagewrap" id="mwrap"><button id="mbtn" type="button" aria-label="連打">もう一回</button></div>
   <div id="mdone" hidden>
-    <div class="t">連打おつかれさま！<br><small style="font-weight:500;color:var(--muted)">連打が落ち着くまで少し待ってね</small></div>
-    <button id="mhold" type="button" disabled><i id="mholdbar"></i><span id="mholdtxt">待機中…</span></button>
+    <div class="t">連打おつかれさま！</div>
+    <button id="mhold" type="button"><i id="mholdbar"></i><span id="mholdtxt">長押しで回す</span></button>
   </div>
 </div>
 
@@ -209,7 +220,7 @@ $('loc').onclick=()=>getLoc().catch(e=>say(e.message,true));
 /* ---------- Google Places API (New) ---------- */
 const PLACES='https://places.googleapis.com/v1/places:searchText';
 const FIELDS=['places.id','places.displayName','places.shortFormattedAddress','places.location','places.rating','places.userRatingCount',
-  'places.priceRange','places.priceLevel','places.googleMapsUri','places.primaryTypeDisplayName','places.businessStatus'].join(',');
+  'places.priceRange','places.priceLevel','places.googleMapsUri','places.websiteUri','places.currentOpeningHours','places.primaryTypeDisplayName','places.businessStatus'].join(',');
 const RADIUS={1:300,2:500,3:1000,4:2000,5:3000};
 /* 価格レベル→1人あたりの目安(円)。日本の実勢に合わせた私の目安で、Googleの公式の換算ではない */
 const LEVEL={PRICE_LEVEL_FREE:[0,0],PRICE_LEVEL_INEXPENSIVE:[0,1500],PRICE_LEVEL_MODERATE:[1000,3500],PRICE_LEVEL_EXPENSIVE:[3000,8000],PRICE_LEVEL_VERY_EXPENSIVE:[7000,1e9]};
@@ -221,7 +232,7 @@ async function places(query){
   usage(1);
   let r;
   try{r=await fetch(PLACES,{method:'POST',headers:{'Content-Type':'application/json','X-Goog-Api-Key':key,'X-Goog-FieldMask':FIELDS},
-    body:JSON.stringify({textQuery:query,languageCode:'ja',regionCode:'JP',includedType:'restaurant',strictTypeFiltering:false,maxResultCount:20,rankPreference:'RELEVANCE',
+    body:JSON.stringify({textQuery:query,languageCode:'ja',regionCode:'JP',includedType:'restaurant',strictTypeFiltering:false,maxResultCount:20,rankPreference:'RELEVANCE',openNow:true,
       locationRestriction:box(st.lat,st.lng,RADIUS[$('range').value])})})}
   catch(e){throw new Error('通信できませんでした（電波、またはキーの「ウェブサイトの制限」の設定を確認）')}
   const d=await r.json().catch(()=>({}));
@@ -243,16 +254,19 @@ function priceText(p){
   const m={PRICE_LEVEL_FREE:'無料',PRICE_LEVEL_INEXPENSIVE:'安め(目安〜1,500円)',PRICE_LEVEL_MODERATE:'ふつう(目安1,000〜3,500円)',PRICE_LEVEL_EXPENSIVE:'高め(目安3,000〜8,000円)',PRICE_LEVEL_VERY_EXPENSIVE:'かなり高め(目安7,000円〜)'};
   return m[p.priceLevel]||'価格は不明';
 }
-/* 関連度順(Googleの並び)で、条件に合う上位15件 */
+function closeTime(p){const t=p.currentOpeningHours&&p.currentOpeningHours.nextCloseTime;if(!t)return '';
+  try{return new Date(t).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Tokyo'})}catch(e){return ''}}
+/* 関連度順(Googleの並び)で、今やっている店のうち条件に合う上位15件 */
 async function fetchShops(genres){
   const lists=await Promise.all((genres&&genres.length?genres:[{q:'レストラン'}]).map(g=>places(g.q)));
   const seen=new Map();lists.forEach(l=>l.forEach(p=>{if(!seen.has(p.id))seen.set(p.id,p)}));
   const yen=+$('yen').value;
-  let arr=[...seen.values()].filter(p=>(!p.businessStatus||p.businessStatus==='OPERATIONAL')&&p.displayName);
+  /* 今やっている店だけ。営業時間が分からない店は、営業中と確認できないので除く */
+  let arr=[...seen.values()].filter(p=>(!p.businessStatus||p.businessStatus==='OPERATIONAL')&&p.displayName&&p.currentOpeningHours&&p.currentOpeningHours.openNow===true);
   if(!$('fami').checked)arr=arr.filter(p=>!FAMIRE.some(w=>p.displayName.text.includes(w)));
   arr=arr.filter(p=>priceOk(p,yen));
   return arr.slice(0,SHOP_COUNT).map(p=>({name:p.displayName.text,genre:p.primaryTypeDisplayName&&p.primaryTypeDisplayName.text,price:priceText(p),
-    rating:p.rating?`★${p.rating}（${p.userRatingCount||0}件）`:'',area:p.shortFormattedAddress||'',url:p.googleMapsUri,
+    rating:p.rating?`★${p.rating}（${p.userRatingCount||0}件）`:'',url:p.googleMapsUri,site:p.websiteUri,close:closeTime(p),
     _d:p.location?dist(st.lat,st.lng,p.location.latitude,p.location.longitude):0}));
 }
 
@@ -262,7 +276,7 @@ function demoPlaces(q){
   const lv=['PRICE_LEVEL_INEXPENSIVE','PRICE_LEVEL_MODERATE','PRICE_LEVEL_EXPENSIVE',undefined];
   const n=q.startsWith('洋食')?0:20;const out=[];
   for(let i=0;i<n;i++)out.push({id:'d'+q+i,displayName:{text:names[i%names.length]+(i>=names.length?'2号店':'')},location:{latitude:st.lat+(i%7-3)*.0006,longitude:st.lng+(i%5-2)*.0006},
-    rating:3.5+(i%6)/4,userRatingCount:20+i*7,priceLevel:lv[i%4],primaryTypeDisplayName:{text:q.split(' ')[0]},shortFormattedAddress:'デモ町'+(i+1)+'丁目',googleMapsUri:'https://maps.google.com/',businessStatus:'OPERATIONAL'});
+    rating:3.5+(i%6)/4,userRatingCount:20+i*7,priceLevel:lv[i%4],primaryTypeDisplayName:{text:q.split(' ')[0]},googleMapsUri:'https://maps.google.com/',websiteUri:i%3?'https://example.com/':undefined,businessStatus:'OPERATIONAL',currentOpeningHours:i%7===6?{openNow:false}:i%5===0?undefined:{openNow:true,nextCloseTime:new Date(Date.now()+3*36e5).toISOString()}});
   return new Promise(r=>setTimeout(()=>r(out),300));
 }
 
@@ -282,38 +296,61 @@ function drawWheel(){
   });
   ctx.restore();
 }
-/* 当たりを先に決めて、その区画の中で止まるように回す */
-function spin(){
-  return new Promise(res=>{
-    const n=wheelLabels.length,step=2*Math.PI/n,win=Math.floor(Math.random()*n);
-    const within=(.15+Math.random()*.7)*step;
-    // ポインタは上(-90°)。区画winの中の点がそこに来る角度
-    const target=((-Math.PI/2-(win*step+within))%(2*Math.PI)+2*Math.PI)%(2*Math.PI);
-    const cur=((angle%(2*Math.PI))+2*Math.PI)%(2*Math.PI);
-    let delta=target-cur;while(delta<0)delta+=2*Math.PI;
-    const total=delta+2*Math.PI*(5+Math.floor(Math.random()*3)),start=angle,dur=4200,t0=performance.now();
-    (function f(now){const p=Math.min((now-t0)/dur,1),e=1-Math.pow(1-p,3);angle=start+total*e;drawWheel();
-      if(p<1)requestAnimationFrame(f);else res(win)})(t0);
+/* タップで回り始め、もう一度タップで減速して止まる。止まった位置のポインタの区画が当たり */
+const CANCEL=new Error('cancel');
+let ctl=null;
+function cancelWheel(){if(ctl){const f=ctl;ctl=null;f()}}
+function indexAt(){const n=wheelLabels.length,step=2*Math.PI/n,a=((-Math.PI/2-angle)%(2*Math.PI)+2*Math.PI)%(2*Math.PI);return Math.floor(a/step)%n}
+function playWheel(){
+  cancelWheel();
+  return new Promise((res,rej)=>{
+    let phase='idle',v=0,raf=0,last=0,tStart=0,t0=0,v0=0,a0=0,T=0;
+    const VMAX=11,hint=$('hint');
+    hint.textContent='ルーレットをタップして回す';cv.classList.add('tap');
+    const end=()=>{cancelAnimationFrame(raf);cv.onpointerdown=null;cv.classList.remove('tap')};
+    ctl=()=>{end();rej(CANCEL)};
+    function frame(now){
+      if(phase==='spin'){const dt=Math.min((now-last)/1000,.05);last=now;v=Math.min(VMAX,v+VMAX*dt/.7);angle+=v*dt}
+      else if(phase==='stop'){
+        const k=Math.min((now-t0)/1000/T,1);angle=a0+v0*T*(1-Math.pow(1-k,3))/3;   // 速さ v0(1-k)^2 で減速
+        if(k>=1){drawWheel();end();ctl=null;hint.textContent='';return res(indexAt())}
+      }
+      drawWheel();raf=requestAnimationFrame(frame);
+    }
+    cv.onpointerdown=ev=>{
+      ev.preventDefault();const now=performance.now();
+      if(phase==='idle'){phase='spin';tStart=last=now;hint.textContent='もう一度タップして止める';raf=requestAnimationFrame(frame)}
+      else if(phase==='spin'&&now-tStart>400){phase='stop';hint.textContent='';t0=now;v0=v;a0=angle;T=2.4+Math.random()*1.2}
+    };
   });
 }
-function setWheel(labels,title){wheelLabels=labels;$('stage').hidden=false;$('stitle').textContent=title;$('result').textContent='';$('shop').hidden=true;$('again').hidden=true;drawWheel();
-  $('stage').scrollIntoView({behavior:'smooth',block:'start'})}
+/* ルーレットを作って表示する。回さない（タップ待ち） */
+function setWheel(labels,title){wheelLabels=labels;$('stage').hidden=false;$('stitle').textContent=title;$('result').textContent='';$('shop').hidden=true;$('again').hidden=true;$('hint').textContent='';
+  $('loading').hidden=true;$('wheelbox').hidden=false;drawWheel();$('stage').scrollIntoView({behavior:'smooth',block:'start'})}
+function showLoading(on,title,text){
+  if(on){const s=$('stage');s.hidden=false;$('stitle').textContent=title||'';$('result').textContent='';$('shop').hidden=true;$('again').hidden=true;$('hint').textContent='';$('loadtxt').textContent=text||'お店を取得中…';s.scrollIntoView({behavior:'smooth',block:'start'})}
+  $('wheelbox').hidden=on;$('loading').hidden=!on;
+}
 
 /* ---------- 流れ ---------- */
 function setBusy(b){st.busy=b;['goGenre','goShop','againShop','againGenre','loc'].forEach(id=>$(id).disabled=b)}
 function pool(){const sel=GENRES.filter(g=>g.el.getAttribute('aria-pressed')==='true');return sel.length?sel:GENRES}
+async function loadShops(genres,title){
+  setBusy(true);showLoading(true,title,genres&&genres.length===1?`${genres[0].label}のお店を取得中…`:'お店を取得中…');
+  try{st.shops=await fetchShops(genres)}finally{setBusy(false);showLoading(false)}
+}
 async function runShop(genres,reuse){
-  if(!reuse){say('お店を探しています…');st.shops=await fetchShops(genres);say('')}
+  if(!reuse){st.shopTitle=genres&&genres.length===1?`お店ルーレット（${genres[0].label}）`:'お店ルーレット';await loadShops(genres,st.shopTitle)}
   if(!st.shops.length)return 'empty';
-  setWheel(st.shops.map(s=>s.name),genres&&genres.length===1?`お店ルーレット（${genres[0].label}）`:'お店ルーレット');
-  const i=await spin(),s=st.shops[i];
+  setWheel(st.shops.map(s=>s.name),st.shopTitle);
+  const s=st.shops[await playWheel()];
   $('result').textContent='🎯 '+s.name;
   const sh=$('shop');sh.innerHTML='';
   const add=(cls,txt)=>{const d=document.createElement('div');d.className=cls;d.textContent=txt;sh.appendChild(d)};
   add('meta',[s.genre,s.price,s.rating].filter(Boolean).join(' ／ '));
-  add('meta',`${s.area?s.area+' ／ ':''}現在地から約${Math.round(s._d||0)}m`);
+  add('meta',`営業中${s.close?`（${s.close}まで）`:''} ／ 現在地から約${Math.round(s._d||0)}m`);
   const lk=document.createElement('div');lk.className='row';
-  [['Googleマップで見る',s.url]].forEach(([t,u])=>{if(!u)return;const a=document.createElement('a');a.href=u;a.target='_blank';a.rel='noopener';a.textContent=t;lk.appendChild(a)});
+  [['お店のページを開く',s.site],['Googleマップで開く',s.url]].forEach(([t,u])=>{if(!u)return;const a=document.createElement('a');a.className='lk';a.href=u;a.target='_blank';a.rel='noopener';a.textContent=t;lk.appendChild(a)});
   sh.appendChild(lk);sh.hidden=false;
   return 'ok';
 }
@@ -321,24 +358,23 @@ async function runGenre(){
   const p=pool().filter(g=>!st.empty.has(g.code));
   if(!p.length){say('近くに条件に合うジャンルがありません。予算や範囲を変えてください',true);return}
   setWheel(p.map(g=>g.label),'ジャンルルーレット');
-  const g=p[await spin()];st.genre=g;$('result').textContent='🎯 '+g.label;await sleep(1300);
-  const r=await runShop([g]);
-  if(r==='empty'){st.empty.add(g.code);say(`${g.label}は条件に合う店が無いので、回し直します`);await sleep(1600);say('');return runGenre()}
+  const g=p[await playWheel()];st.genre=g;
+  const r=await runShop([g]);          // ジャンルが決まったら、そのジャンルの店を取得してお店ルーレットを出す（回すのはタップしてから）
+  if(r==='empty'){st.empty.add(g.code);say(`${g.label}は今やっている店が無いので、ジャンルをやり直します`);await sleep(1600);say('');return runGenre()}
   $('againGenre').hidden=false;
 }
 async function start(mode){
   if(st.busy)return;
-  say('');setBusy(true);
+  cancelWheel();say('');
   try{
-    if(st.lat==null)await getLoc();
+    if(st.lat==null){setBusy(true);try{await getLoc()}finally{setBusy(false)}}
     st.mode=mode;st.empty=new Set();
-    const p=pool(),sel=GENRES.filter(g=>g.el.getAttribute('aria-pressed')==='true');
+    const sel=GENRES.filter(g=>g.el.getAttribute('aria-pressed')==='true');
     st.single=sel.length===1;
     if(mode==='genre'&&!st.single){await runGenre()}
-    else{const gs=mode==='genre'?sel:(sel.length?sel:null);const r=await runShop(gs);if(r==='empty')say('条件に合う店が見つかりません。予算・範囲・ジャンルを変えてください',true)}
+    else{const gs=mode==='genre'?sel:(sel.length?sel:null);const r=await runShop(gs);if(r==='empty')say('今やっている店が見つかりません。予算・範囲・ジャンルを変えてください',true)}
     afterRun();
-  }catch(e){say(e.message,true)}
-  setBusy(false);
+  }catch(e){if(e!==CANCEL)say(e.message,true)}
 }
 function afterRun(){
   const hasShop=!$('shop').hidden;
@@ -348,14 +384,14 @@ function afterRun(){
 $('goGenre').onclick=()=>start('genre');
 $('goShop').onclick=()=>start('shop');
 
-/* もう一回 → 連打してから */
+/* もう一回 → 連打してから。長押しで回すを押すとルーレットが出て、タップするまで回らない */
 $('againShop').onclick=async()=>{
   if(st.busy)return;if(!await mash('お店をもう一回'))return;
-  setBusy(true);try{await runShop(null,true);afterRun()}catch(e){say(e.message,true)}setBusy(false);
+  try{await runShop(null,true);afterRun()}catch(e){if(e!==CANCEL)say(e.message,true)}
 };
 $('againGenre').onclick=async()=>{
   if(st.busy)return;if(!await mash('ジャンルをもう一回'))return;
-  setBusy(true);try{await runGenre();afterRun()}catch(e){say(e.message,true)}setBusy(false);
+  try{await runGenre();afterRun()}catch(e){if(e!==CANCEL)say(e.message,true)}
 };
 
 /* ---------- 連打画面 ---------- */
@@ -377,11 +413,7 @@ function mash(title){
       fx(wrap,btn,w);try{navigator.vibrate&&navigator.vibrate(8)}catch(e){}
       if(left===0)finish();
     };
-    function finish(){
-      btn.hidden=true;wrap.hidden=true;done.hidden=false;hold.disabled=true;ht.textContent='待機中…';hb.style.width='0';
-      // 連打の指が止まるのを待つ。ここでは何を押しても先に進まない
-      setTimeout(()=>{if(over)return;hold.disabled=false;ht.textContent='長押しで回す';},2200);
-    }
+    function finish(){btn.hidden=true;wrap.hidden=true;done.hidden=false;hold.disabled=false;ht.textContent='長押しで回す';hb.style.width='0'}
     // 長押し(約1秒)で初めて先に進む。連打では進まない
     hold.onpointerdown=ev=>{
       ev.preventDefault();if(hold.disabled||over)return;holdStart=performance.now();
