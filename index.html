@@ -156,6 +156,11 @@ details summary{padding:4px 0;font-size:15px}
     <div class="field" style="flex:none"><label for="place">場所を指定（駅名・住所。空欄なら現在地）</label><input id="place" type="text" placeholder="例: 池袋駅" autocomplete="off"></div>
     <button class="btn ghost small" id="mapbtn" type="button" style="align-self:flex-start">🗺 地図でピンを刺す</button>
     <div id="mapbox" hidden>
+      <div class="row" style="flex-wrap:nowrap">
+        <input id="mapq" type="text" placeholder="地図の中で検索（例: 池袋駅）" autocomplete="off" enterkeyhint="search" style="flex:1 1 auto">
+        <button class="btn small" id="mapgo" type="button">検索</button>
+      </div>
+      <div class="status" id="mapmsg"></div>
       <div id="map"></div>
       <div class="status">地図をタップするとピンが立ちます。ピンはドラッグで動かせます。赤い円が探す範囲です。</div>
     </div>
@@ -701,6 +706,17 @@ function setPin(lat,lng){
   st.pin={lat,lng};$('place').value='';drawPin(lat,lng);
   $('locst').textContent=`場所: 地図のピン（${lat.toFixed(4)}, ${lng.toFixed(4)}）`;
 }
+/* 地図の中の検索: 駅名・住所の場所へ地図を動かして、ピンを刺す */
+async function mapSearch(){
+  const q=$('mapq').value.trim();if(!q)return;
+  $('mapmsg').textContent='探しています…';
+  try{
+    const pl=await geocode(q);
+    setPin(pl.lat,pl.lng);drawPin(pl.lat,pl.lng,true);
+    $('locst').textContent=`場所: ${pl.name}（地図のピン）`;
+    $('mapmsg').textContent=`「${pl.name}」${pl.address||''} にピンを刺しました`;
+  }catch(e){$('mapmsg').textContent=e.message}
+}
 function mapShow(lat,lng,asPin){if(!map||lat==null)return;drawPin(lat,lng,true)}
 $('mapbtn').onclick=()=>{
   const b=$('mapbox');b.hidden=!b.hidden;
@@ -709,6 +725,8 @@ $('mapbtn').onclick=()=>{
   ensureMap();
   setTimeout(()=>{map.invalidateSize();if(st.pin)drawPin(st.pin.lat,st.pin.lng,true);else if(st.lat!=null)drawPin(st.lat,st.lng,true)},60);
 };
+$('mapgo').onclick=mapSearch;
+$('mapq').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();mapSearch()}});
 $('range').addEventListener('change',()=>{if(areaCircle){areaCircle.setRadius(RADIUS[$('range').value]);map.fitBounds(areaCircle.getBounds(),{padding:[12,12]})}});
 $('place').addEventListener('input',()=>{st.pin=null;if(map&&pinMarker){map.removeLayer(pinMarker);pinMarker=null}if(map&&areaCircle){map.removeLayer(areaCircle);areaCircle=null}});
 drawWheel();fetchUsage();
