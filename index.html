@@ -97,17 +97,36 @@ a.lk{display:inline-block;padding:10px 14px;border:1.5px solid var(--accent);bor
 #mhold i{position:absolute;left:0;top:0;bottom:0;width:0;background:var(--ok);opacity:.35}
 #mcancel{position:absolute;top:max(12px,env(safe-area-inset-top,0px));right:max(12px,env(safe-area-inset-right,0px));font:inherit;font-size:14px;padding:8px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--muted)}
 @media (prefers-reduced-motion:reduce){#mbtn.hit,.fx,.sp{animation:none}}
+/* 1画面に収める（スクロールを減らす） */
+body{padding-block:10px 20px}
+main{gap:8px}
+h1{font-size:20px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+button.btn.small{flex:0 0 auto;font-size:14px;padding:8px 12px}
+.status{min-height:0;font-size:12px}
+.status:empty{display:none}
+.go button.btn{padding:12px 8px;font-size:15px;white-space:nowrap}
+.stage{gap:6px;padding:8px 10px}
+.stage h2{font-size:14px;color:var(--muted)}
+.wheelbox{width:clamp(180px,calc(100vh - 440px),400px);max-width:100%}
+@supports (height:100dvh){.wheelbox{width:clamp(180px,calc(100dvh - 440px),400px);max-width:100%}}
+.hint{font-size:15px;min-height:20px}
+.result{font-size:21px;min-height:28px}
+.shop{gap:2px;align-items:center;text-align:center}
+.shop .meta{font-size:13px}
+a.lk{padding:8px 12px;font-size:14px}
+#again button.btn{padding:10px 12px;font-size:15px}
 </style>
 </head>
 <body>
 <main>
-  <h1>メシルーレット<small id="ver"></small></h1>
+  <div class="top"><h1>メシルーレット<small id="ver"></small></h1><button class="btn ghost small" id="optbtn" type="button" hidden>⚙ 設定</button></div>
 
-  <section class="card" aria-label="条件">
+  <section class="card" id="opts" aria-label="条件">
     <div class="row">
       <button class="btn ghost" id="loc" type="button">📍 現在地を取得</button>
+      <span class="status" id="locst">現在地はまだ取得していません</span>
     </div>
-    <div class="status" id="locst">現在地はまだ取得していません</div>
     <div class="row">
       <div class="field"><label for="yen">1人の予算（円）</label><input id="yen" type="number" inputmode="numeric" min="0" step="100" value="1500"></div>
       <div class="field"><label for="range">探す範囲</label>
@@ -115,17 +134,19 @@ a.lk{display:inline-block;padding:10px 14px;border:1.5px solid var(--accent);bor
     </div>
     <label class="chk"><input type="checkbox" id="fami" checked> ファミレスを含める</label>
     <label class="chk"><input type="checkbox" id="unk" checked> 価格が不明な店も含める</label>
+    <label class="chk"><input type="checkbox" id="exCafe" checked> カフェ・スイーツの店を除く</label>
+    <label class="chk"><input type="checkbox" id="exBar" checked> バー・カクテルの店を除く</label>
     <div>
-      <div class="lbl">ジャンルで絞る（選ばなければ全ジャンル。1つだけ選ぶとジャンルルーレットを飛ばす）</div>
+      <div class="lbl">ジャンルで絞る（選ばなければ全ジャンル。1つだけ選ぶとジャンルルーレットを飛ばす。選んだジャンルは「除く」に関係なく入る）</div>
       <div class="chips" id="chips" style="margin-top:6px"></div>
     </div>
-    <div class="row">
-      <button class="btn" id="goGenre" type="button">ジャンルから決める</button>
-      <button class="btn sub" id="goShop" type="button">お店を直接決める</button>
-    </div>
-    <div class="status" id="msg"></div>
-    <div class="status" id="usage"></div>
   </section>
+  <div class="row go">
+    <button class="btn" id="goGenre" type="button">ジャンルから決める</button>
+    <button class="btn sub" id="goShop" type="button">お店を直接決める</button>
+  </div>
+  <div class="status" id="msg"></div>
+  <div class="status" id="usage"></div>
 
   <section class="card stage" id="stage" hidden aria-live="polite">
     <h2 id="stitle"></h2>
@@ -183,13 +204,15 @@ const chipsEl=$('chips');
 GENRES.forEach(g=>{const b=document.createElement('button');b.type='button';b.className='chip';b.textContent=g.label;b.setAttribute('aria-pressed','false');
   b.onclick=()=>b.setAttribute('aria-pressed',b.getAttribute('aria-pressed')==='true'?'false':'true');g.el=b;chipsEl.appendChild(b)});
 ['yen','range'].forEach(id=>{const v=store.get(id);if(v!==null)$(id).value=v;$(id).onchange=()=>store.set(id,$(id).value)});
+['fami','unk','exCafe','exBar'].forEach(id=>{const v=store.get(id);if(v!==null)$(id).checked=v==='1';$(id).onchange=()=>store.set(id,$(id).checked?'1':'0')});
+$('optbtn').onclick=()=>{$('opts').hidden=!$('opts').hidden};
 /* 検索回数は中継(Cloudflare Worker)が全端末の合計で数える。上限に達すると中継が検索を断る */
 const WORKER='https://meshi-roulette-proxy.meshi-roulette-proxy.workers.dev';
 function showUsage(n,limit){
   const el=$('usage');el.className='status'+(n>=limit?' err':'');
   el.textContent=n>=limit
-    ?`⚠ 今月の検索は${n}回で上限（${limit}回）に達したので、来月まで検索できません（無料枠を超えて課金されないよう止めています）`
-    :`今月の検索: ${n}/${limit}回（すべての端末の合計。上限に達すると自動で止まり、有料にはなりません）`;
+    ?`⚠ 今月の検索は${n}回で上限（${limit}回）。来月まで検索できません（課金されないよう停止）`
+    :`今月の検索 ${n}/${limit}回（全端末の合計。上限で自動停止、有料にはなりません）`;
 }
 async function fetchUsage(){
   if(DEMO){$('usage').textContent='デモ表示です（検索回数は数えません）';return}
@@ -246,6 +269,9 @@ function priceText(p){
   const m={PRICE_LEVEL_FREE:'無料',PRICE_LEVEL_INEXPENSIVE:'安め(目安〜1,500円)',PRICE_LEVEL_MODERATE:'ふつう(目安1,000〜3,500円)',PRICE_LEVEL_EXPENSIVE:'高め(目安3,000〜8,000円)',PRICE_LEVEL_VERY_EXPENSIVE:'かなり高め(目安7,000円〜)'};
   return m[p.priceLevel]||'価格は不明';
 }
+/* Googleにラストオーダーの項目は無い。キッチンの営業時間（副の営業時間）があるときだけ、その終了時刻を目安として使う */
+function kitchenClose(p){const h=(p.currentSecondaryOpeningHours||[]).find(x=>x.secondaryHoursType==='KITCHEN');const t=h&&h.nextCloseTime;if(!t)return '';
+  try{return new Date(t).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Tokyo'})}catch(e){return ''}}
 function closeTime(p){const t=p.currentOpeningHours&&p.currentOpeningHours.nextCloseTime;if(!t)return '';
   try{return new Date(t).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit',timeZone:'Asia/Tokyo'})}catch(e){return ''}}
 /* 関連度順(Googleの並び)で、今やっている店のうち条件に合う上位15件 */
@@ -256,9 +282,10 @@ async function fetchShops(genres){
   /* 今やっている店だけ。営業時間が分からない店は、営業中と確認できないので除く */
   let arr=[...seen.values()].filter(p=>(!p.businessStatus||p.businessStatus==='OPERATIONAL')&&p.displayName&&p.currentOpeningHours&&p.currentOpeningHours.openNow===true);
   if(!$('fami').checked)arr=arr.filter(p=>!FAMIRE.some(w=>p.displayName.text.includes(w)));
-  arr=arr.filter(p=>priceOk(p,yen));
+  const exTypes=excluded().flatMap(e=>e.types);
+  arr=arr.filter(p=>!exTypes.includes(p.primaryType)).filter(p=>priceOk(p,yen));
   return arr.slice(0,SHOP_COUNT).map(p=>({name:p.displayName.text,genre:p.primaryTypeDisplayName&&p.primaryTypeDisplayName.text,price:priceText(p),
-    rating:p.rating?`★${p.rating}（${p.userRatingCount||0}件）`:'',url:p.googleMapsUri,site:p.websiteUri,close:closeTime(p),
+    rating:p.rating?`★${p.rating}（${p.userRatingCount||0}件）`:'',url:p.googleMapsUri,site:p.websiteUri,close:closeTime(p),priceUnknown:!p.priceRange&&!(p.priceLevel&&LEVEL[p.priceLevel]),kitchen:kitchenClose(p),
     _d:p.location?dist(st.lat,st.lng,p.location.latitude,p.location.longitude):0}));
 }
 
@@ -268,7 +295,7 @@ function demoPlaces(q){
   const lv=['PRICE_LEVEL_INEXPENSIVE','PRICE_LEVEL_MODERATE','PRICE_LEVEL_EXPENSIVE',undefined];
   const n=q.startsWith('洋食')?0:20;const out=[];
   for(let i=0;i<n;i++)out.push({id:'d'+q+i,displayName:{text:names[i%names.length]+(i>=names.length?'2号店':'')},location:{latitude:st.lat+(i%7-3)*.0006,longitude:st.lng+(i%5-2)*.0006},
-    rating:3.5+(i%6)/4,userRatingCount:20+i*7,priceLevel:lv[i%4],primaryTypeDisplayName:{text:q.split(' ')[0]},googleMapsUri:'https://maps.google.com/',websiteUri:i%3?'https://example.com/':undefined,businessStatus:'OPERATIONAL',currentOpeningHours:i%7===6?{openNow:false}:i%5===0?undefined:{openNow:true,nextCloseTime:new Date(Date.now()+3*36e5).toISOString()}});
+    rating:3.5+(i%6)/4,userRatingCount:20+i*7,priceLevel:lv[i%4],primaryTypeDisplayName:{text:q.split(' ')[0]},primaryType:i%9===8?'cafe':i%11===10?'bar':'restaurant',currentSecondaryOpeningHours:i%4===1?[{secondaryHoursType:'KITCHEN',nextCloseTime:new Date(Date.now()+2*36e5).toISOString()}]:undefined,googleMapsUri:'https://maps.google.com/',websiteUri:i%3?'https://example.com/':undefined,businessStatus:'OPERATIONAL',currentOpeningHours:i%7===6?{openNow:false}:i%5===0?undefined:{openNow:true,nextCloseTime:new Date(Date.now()+3*36e5).toISOString()}});
   return new Promise(r=>setTimeout(()=>r(out),300));
 }
 
@@ -326,7 +353,12 @@ function showLoading(on,title,text){
 
 /* ---------- 流れ ---------- */
 function setBusy(b){st.busy=b;['goGenre','goShop','againShop','againGenre','loc'].forEach(id=>$(id).disabled=b)}
-function pool(){const sel=GENRES.filter(g=>g.el.getAttribute('aria-pressed')==='true');return sel.length?sel:GENRES}
+/* 除外する店の種類（Googleの primaryType）。ジャンルを明示的に選んだときは、そのジャンルは除外しない */
+const EXC={exCafe:{label:'カフェ・スイーツ',types:['cafe','coffee_shop','tea_house','bakery','dessert_restaurant','dessert_shop','ice_cream_shop','confectionery']},
+  exBar:{label:'バー・カクテル',types:['bar','pub','wine_bar','night_club']}};
+function selected(){return GENRES.filter(g=>g.el.getAttribute('aria-pressed')==='true')}
+function excluded(){const sel=new Set(selected().map(g=>g.label));return Object.keys(EXC).filter(id=>$(id).checked&&!sel.has(EXC[id].label)).map(id=>EXC[id])}
+function pool(){const sel=selected();if(sel.length)return sel;const ex=excluded().map(e=>e.label);return GENRES.filter(g=>!ex.includes(g.label))}
 async function loadShops(genres,title){
   setBusy(true);showLoading(true,title,genres&&genres.length===1?`${genres[0].label}のお店を取得中…`:'お店を取得中…');
   try{st.shops=await fetchShops(genres)}finally{setBusy(false);showLoading(false)}
@@ -340,7 +372,9 @@ async function runShop(genres,reuse){
   const sh=$('shop');sh.innerHTML='';
   const add=(cls,txt)=>{const d=document.createElement('div');d.className=cls;d.textContent=txt;sh.appendChild(d)};
   add('meta',[s.genre,s.price,s.rating].filter(Boolean).join(' ／ '));
-  add('meta',`営業中${s.close?`（${s.close}まで）`:''} ／ 現在地から約${Math.round(s._d||0)}m`);
+  add('meta',[`営業中${s.close?`（${s.close}まで）`:''}`,s.kitchen?`ラストオーダーの目安 ${s.kitchen}（キッチンの営業時間）`:'',`現在地から約${Math.round(s._d||0)}m`].filter(Boolean).join(' ／ '));
+  st.free=!!s.priceUnknown;     // 価格が不明な店が当たったら、連打なしでもう一回
+  $('againShop').textContent=st.free?'価格が不明なのでもう一回（連打なし）':'お店をもう一回';
   const lk=document.createElement('div');lk.className='row';
   [['お店のページを開く',s.site],['Googleマップで開く',s.url]].forEach(([t,u])=>{if(!u)return;const a=document.createElement('a');a.className='lk';a.href=u;a.target='_blank';a.rel='noopener';a.textContent=t;lk.appendChild(a)});
   sh.appendChild(lk);sh.hidden=false;
@@ -357,7 +391,7 @@ async function runGenre(){
 }
 async function start(mode){
   if(st.busy)return;
-  cancelWheel();say('');
+  cancelWheel();say('');$('opts').hidden=true;$('optbtn').hidden=false;
   try{
     if(st.lat==null){setBusy(true);try{await getLoc()}finally{setBusy(false)}}
     st.mode=mode;st.empty=new Set();
@@ -378,7 +412,7 @@ $('goShop').onclick=()=>start('shop');
 
 /* もう一回 → 連打してから。長押しで回すを押すとルーレットが出て、タップするまで回らない */
 $('againShop').onclick=async()=>{
-  if(st.busy)return;if(!await mash('お店をもう一回'))return;
+  if(st.busy)return;if(!st.free&&!await mash('お店をもう一回'))return;
   try{await runShop(null,true);afterRun()}catch(e){if(e!==CANCEL)say(e.message,true)}
 };
 $('againGenre').onclick=async()=>{
