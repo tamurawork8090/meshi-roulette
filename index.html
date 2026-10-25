@@ -142,6 +142,11 @@ details summary{padding:4px 0;font-size:15px}
 #map{height:260px;border-radius:12px;overflow:hidden;position:relative;z-index:0;background:var(--line)}
 #mapbox{display:flex;flex-direction:column;gap:6px}
 #mapbox[hidden]{display:none}
+#mapq{min-width:0}
+/* 全画面: 検索バーは上に残す */
+#mapbox.full{position:fixed;inset:0;z-index:55;background:var(--bg);gap:8px;
+  padding:max(12px,env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) max(12px,env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px))}
+#mapbox.full #map{flex:1 1 auto;height:auto;min-height:0}
 </style>
 </head>
 <body>
@@ -159,6 +164,7 @@ details summary{padding:4px 0;font-size:15px}
       <div class="row" style="flex-wrap:nowrap">
         <input id="mapq" type="text" placeholder="地図の中で検索（例: 池袋駅）" autocomplete="off" enterkeyhint="search" style="flex:1 1 auto">
         <button class="btn small" id="mapgo" type="button">検索</button>
+        <button class="btn ghost small" id="mapfs" type="button" aria-label="地図を全画面にする">⛶</button>
       </div>
       <div class="status" id="mapmsg"></div>
       <div id="map"></div>
@@ -720,11 +726,20 @@ async function mapSearch(){
 function mapShow(lat,lng,asPin){if(!map||lat==null)return;drawPin(lat,lng,true)}
 $('mapbtn').onclick=()=>{
   const b=$('mapbox');b.hidden=!b.hidden;
-  if(b.hidden)return;
+  if(b.hidden){mapFull(false);return}
   if(typeof L==='undefined'){b.hidden=true;say('地図を読み込めませんでした（通信を確認してください）',true);return}
   ensureMap();
   setTimeout(()=>{map.invalidateSize();if(st.pin)drawPin(st.pin.lat,st.pin.lng,true);else if(st.lat!=null)drawPin(st.lat,st.lng,true)},60);
 };
+function mapFull(on){
+  const f=on===undefined?!$('mapbox').classList.contains('full'):on;
+  $('mapbox').classList.toggle('full',f);
+  $('mapfs').textContent=f?'✕':'⛶';$('mapfs').setAttribute('aria-label',f?'全画面を閉じる':'地図を全画面にする');
+  document.body.style.overflow=f?'hidden':'';
+  setTimeout(()=>{if(map)map.invalidateSize()},80);
+}
+$('mapfs').onclick=()=>mapFull();
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&$('mapbox').classList.contains('full'))mapFull(false)});
 $('mapgo').onclick=mapSearch;
 $('mapq').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();mapSearch()}});
 $('range').addEventListener('change',()=>{if(areaCircle){areaCircle.setRadius(RADIUS[$('range').value]);map.fitBounds(areaCircle.getBounds(),{padding:[12,12]})}});
