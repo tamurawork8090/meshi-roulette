@@ -159,6 +159,10 @@ details summary{padding:4px 0;font-size:15px}
       <div class="advbody">
         <label class="chk"><input type="checkbox" id="fami" checked> ファミレスを含める</label>
         <label class="chk"><input type="checkbox" id="unk" checked> 価格が不明な店も含める</label>
+        <div id="testbox" hidden>
+          <div class="status" id="cachest"></div>
+          <button class="btn ghost small" id="clearCache" type="button">取得済みの店を消して、次は検索し直す</button>
+        </div>
         <div>
           <div class="lbl">ジャンルで絞る（色が付いたジャンルだけがルーレットに入る。1つだけ選ぶとジャンルルーレットを飛ばす）</div>
           <div class="chips" id="chips" style="margin-top:6px"></div>
@@ -227,6 +231,12 @@ const $=id=>document.getElementById(id);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const st={round:0,lat:null,lng:null,busy:false,mode:null,genre:null,shops:[],lastPool:null,empty:new Set(),single:false};
 const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+/* テスト中は、取得済みの店（ブラウザに保存）だけで動かし、検索し直さない（デモとは別に保存） */
+const CK='meshiTestAll'+(DEMO?'-demo':'');
+let cacheAll=null;
+if(ANYTIME){try{const v=JSON.parse(store.get(CK)||'null');if(Array.isArray(v)&&v.length)cacheAll=v}catch(e){}}
+function updCache(){const el=document.getElementById('cachest');if(el)el.textContent=cacheAll?`テスト: 取得済みの${cacheAll.length}件だけで動かします（検索し直しません）`:'テスト: まだ取得していません（最初の1回だけ検索して保存します）'}
+function saveCache(list){const seen=new Map();(cacheAll||[]).concat(list).forEach(x=>{if(!seen.has(x.id))seen.set(x.id,x)});cacheAll=[...seen.values()];store.set(CK,JSON.stringify(cacheAll));updCache()}
 
 /* ---------- 画面の部品 ---------- */
 const chipsEl=$('chips');
@@ -362,8 +372,13 @@ function filterShops(list){
     _d:p.location?dist(st.lat,st.lng,p.location.latitude,p.location.longitude):0}));
 }
 async function fetchShops(genres){
+  if(ANYTIME&&cacheAll){      // テスト中: 取得済みの店だけで選ぶ
+    const sel=genres&&genres.length?new Set(genres.map(g=>g.label)):null;
+    return filterShops(sel?cacheAll.filter(x=>sel.has(classify(x))):cacheAll);
+  }
   const lists=await placesMany((genres&&genres.length?genres:[{q:'レストラン'}]).map(g=>g.q));
-  return filterShops(lists.flat());
+  const flat=lists.flat();if(ANYTIME)saveCache(flat);
+  return filterShops(flat);
 }
 
 /* デモ用のにせデータ（?demo=1 のときだけ使う） */
@@ -516,16 +531,21 @@ async function loadGenres(my){
   try{
     const raw=new Map();
     const add=list=>list.forEach(x=>{const g=classify(x);if(!g)return;if(!raw.has(g))raw.set(g,[]);const a=raw.get(g);if(!a.some(y=>y.id===x.id))a.push(x)});
-    add(await broadPlaces());
-    if(my!==st.round)throw CANCEL;
-    const missing=pl.filter(g=>!filterShops(raw.get(g.label)||[]).length);
-    const types=[...new Set(missing.flatMap(g=>nearbyTypesOf(g.label)))];
-    if(types.length){
-      $('loadtxt').textContent='見つからなかったジャンルをまとめて探しています…';
-      add(await nearbyPlaces(types));
+    if(ANYTIME&&cacheAll){add(cacheAll)}        // テスト中: 取得済みの店だけで動かす
+    else{
+      const got=[];const addNew=l=>{got.push(...l);add(l)};
+      addNew(await broadPlaces());
       if(my!==st.round)throw CANCEL;
+      const missing=pl.filter(g=>!filterShops(raw.get(g.label)||[]).length);
+      const types=[...new Set(missing.flatMap(g=>nearbyTypesOf(g.label)))];
+      if(types.length){
+        $('loadtxt').textContent='見つからなかったジャンルをまとめて探しています…';
+        addNew(await nearbyPlaces(types));
+        if(my!==st.round)throw CANCEL;
+      }
+      if(ANYTIME)saveCache(got);
     }
-    st.rawByGenre=raw;st.byGenre=new Map();
+        st.rawByGenre=raw;st.byGenre=new Map();
     pl.forEach(g=>{const shops=filterShops(raw.get(g.label)||[]);if(shops.length)st.byGenre.set(g.label,shops)});
   }finally{if(my===st.round)showLoading(false)}
 }
@@ -545,7 +565,7 @@ async function runGenre(){
   // 裏でそのジャンルを調べ直す（調べ直せなくても、調べ済みの店で続ける）
   let done=false;
   const rp=(async()=>{
-    let fresh=[];try{fresh=(await placesMany([g.q]))[0]||[]}catch(e){fresh=[]}
+    let fresh=[];if(!(ANYTIME&&cacheAll)){try{fresh=(await placesMany([g.q]))[0]||[]}catch(e){fresh=[]}}
     const known=(st.rawByGenre&&st.rawByGenre.get(g.label))||[];
     let shops=filterShops(fresh.concat(known));if(!shops.length)shops=st.byGenre.get(g.label)||[];
     done=true;return shops;
@@ -632,6 +652,7 @@ function fx(wrap,btn,w){
     const a=Math.random()*Math.PI*2,d=w/2+30+Math.random()*40;s.style.cssText=`left:${cx}px;top:${cy}px;--dx:${Math.cos(a)*d}px;--dy:${Math.sin(a)*d}px`;wrap.appendChild(s);s.onanimationend=()=>s.remove()}
 }
 drawWheel();fetchUsage();
+if(ANYTIME){$('testbox').hidden=false;updCache();$('clearCache').onclick=()=>{cacheAll=null;st.byGenre=null;st.rawByGenre=null;store.set(CK,'');updCache()}}
 </script>
 </body>
 </html>
