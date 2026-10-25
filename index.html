@@ -60,7 +60,7 @@ details summary{cursor:pointer;font-size:14px;color:var(--muted)}
 .shop .nm{font-family:var(--display);font-weight:900;font-size:22px}
 .shop .meta{font-size:14px;color:var(--muted)}
 .shop a{color:var(--accent);font-weight:700;font-size:15px}
-footer{font-size:12px;color:var(--muted);text-align:center}
+footer{font-size:11px;color:var(--muted);text-align:center}
 footer a{color:var(--muted)}
 
 [hidden]{display:none!important}
@@ -98,14 +98,14 @@ a.lk{display:inline-block;padding:10px 14px;border:1.5px solid var(--accent);bor
 #mcancel{position:absolute;top:max(12px,env(safe-area-inset-top,0px));right:max(12px,env(safe-area-inset-right,0px));font:inherit;font-size:14px;padding:8px 12px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--muted)}
 @media (prefers-reduced-motion:reduce){#mbtn.hit,.fx,.sp{animation:none}}
 /* 1画面に収める（スクロールを減らす） */
-body{padding-block:10px 20px}
+body{padding-block:10px 8px}
 main{gap:8px}
 h1{font-size:20px}
 .top{display:flex;align-items:center;justify-content:space-between;gap:8px}
 button.btn.small{flex:0 0 auto;font-size:14px;padding:8px 12px}
 .status{min-height:0;font-size:12px}
 .status:empty{display:none}
-.go button.btn{padding:12px 8px;font-size:15px;white-space:nowrap}
+
 .stage{gap:6px;padding:8px 10px}
 .stage h2{font-size:14px;color:var(--muted)}
 .wheelbox{width:clamp(180px,calc(100vh - 440px),400px);max-width:100%}
@@ -116,6 +116,15 @@ button.btn.small{flex:0 0 auto;font-size:14px;padding:8px 12px}
 .shop .meta{font-size:13px}
 a.lk{padding:8px 12px;font-size:14px}
 #again button.btn{padding:10px 12px;font-size:15px}
+/* 開始ボタンは縦に並べて大きく。結果が出ている間は少し小さくして1画面に収める */
+.go{display:flex;flex-direction:column;gap:10px}
+.go button.btn{width:100%;flex:none;font-size:20px;padding:20px 12px;white-space:nowrap}
+body.round .go{gap:6px}
+body.round .go button.btn{font-size:16px;padding:10px 12px}
+details summary{padding:4px 0;font-size:15px}
+.advbody{display:flex;flex-direction:column;gap:10px;margin-top:8px}
+.wheelbox{width:clamp(170px,calc(100vh - 500px),400px)}
+@supports (height:100dvh){.wheelbox{width:clamp(170px,calc(100dvh - 500px),400px)}}
 </style>
 </head>
 <body>
@@ -132,16 +141,19 @@ a.lk{padding:8px 12px;font-size:14px}
       <div class="field"><label for="range">探す範囲</label>
         <select id="range"><option value="1">300m</option><option value="2">500m</option><option value="3" selected>1km</option><option value="4">2km</option><option value="5">3km</option></select></div>
     </div>
-    <label class="chk"><input type="checkbox" id="fami" checked> ファミレスを含める</label>
-    <label class="chk"><input type="checkbox" id="unk" checked> 価格が不明な店も含める</label>
-    <label class="chk"><input type="checkbox" id="exCafe" checked> カフェ・スイーツの店を除く</label>
-    <label class="chk"><input type="checkbox" id="exBar" checked> バー・カクテルの店を除く</label>
-    <div>
-      <div class="lbl">ジャンルで絞る（選ばなければ全ジャンル。1つだけ選ぶとジャンルルーレットを飛ばす。選んだジャンルは「除く」に関係なく入る）</div>
-      <div class="chips" id="chips" style="margin-top:6px"></div>
-    </div>
+    <details id="adv">
+      <summary>詳細設定</summary>
+      <div class="advbody">
+        <label class="chk"><input type="checkbox" id="fami" checked> ファミレスを含める</label>
+        <label class="chk"><input type="checkbox" id="unk" checked> 価格が不明な店も含める</label>
+        <div>
+          <div class="lbl">ジャンルで絞る（色が付いたジャンルだけがルーレットに入る。1つだけ選ぶとジャンルルーレットを飛ばす）</div>
+          <div class="chips" id="chips" style="margin-top:6px"></div>
+        </div>
+      </div>
+    </details>
   </section>
-  <div class="row go">
+  <div class="go">
     <button class="btn" id="goGenre" type="button">ジャンルから決める</button>
     <button class="btn sub" id="goShop" type="button">お店を直接決める</button>
   </div>
@@ -161,7 +173,7 @@ a.lk{padding:8px 12px;font-size:14px}
     </div>
   </section>
 
-  <footer>お店情報: Google マップ（<a href="https://www.google.com/maps" target="_blank" rel="noopener">Google Maps</a>）。今やっている店だけ。並びはGoogleの関連度順、予算は目安です</footer>
+  <footer>お店情報: <a href="https://www.google.com/maps" target="_blank" rel="noopener">Google マップ</a><span id="foot"></span></footer>
 </main>
 
 <div id="mash" hidden role="dialog" aria-label="もう一回の連打">
@@ -182,7 +194,9 @@ const Q=new URLSearchParams(location.search);
 const TEST=Q.has('test'), DEMO=Q.has('demo');
 const MASH_TOTAL=TEST?30:300;          // 本番300回、?test=1 で30回
 const SHOP_COUNT=15;
+const ANYTIME=TEST;   // テスト段階では、営業時間外の店も出す
 document.getElementById('ver').textContent=TEST?'テスト(30回)':'';
+if(TEST)document.getElementById('foot').textContent='（テスト中は営業時間外も出す）';
 
 /* ---- ジャンル(あなたが選んだ15件)。qはGoogleマップの検索語 ---- */
 const GENRES=[
@@ -196,15 +210,19 @@ const FAMIRE=['ガスト','サイゼリヤ','サイゼ','デニーズ','ジョ�
 
 const $=id=>document.getElementById(id);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-const st={lat:null,lng:null,busy:false,mode:null,genre:null,shops:[],lastPool:null,empty:new Set(),single:false};
+const st={round:0,lat:null,lng:null,busy:false,mode:null,genre:null,shops:[],lastPool:null,empty:new Set(),single:false};
 const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
 
 /* ---------- 画面の部品 ---------- */
 const chipsEl=$('chips');
-GENRES.forEach(g=>{const b=document.createElement('button');b.type='button';b.className='chip';b.textContent=g.label;b.setAttribute('aria-pressed','false');
-  b.onclick=()=>b.setAttribute('aria-pressed',b.getAttribute('aria-pressed')==='true'?'false':'true');g.el=b;chipsEl.appendChild(b)});
+const DEFAULT_OFF=['カフェ・スイーツ','バー・カクテル'];     // 最初は、この2つ以外が選ばれている
+let savedSel=null;try{savedSel=JSON.parse(store.get('gsel')||'null')}catch(e){}
+const saveSel=()=>store.set('gsel',JSON.stringify(GENRES.filter(g=>g.el.getAttribute('aria-pressed')==='true').map(g=>g.label)));
+GENRES.forEach(g=>{const b=document.createElement('button');b.type='button';b.className='chip';b.textContent=g.label;
+  b.setAttribute('aria-pressed',(Array.isArray(savedSel)?savedSel.includes(g.label):!DEFAULT_OFF.includes(g.label))?'true':'false');
+  b.onclick=()=>{b.setAttribute('aria-pressed',b.getAttribute('aria-pressed')==='true'?'false':'true');saveSel()};g.el=b;chipsEl.appendChild(b)});
 ['yen','range'].forEach(id=>{const v=store.get(id);if(v!==null)$(id).value=v;$(id).onchange=()=>store.set(id,$(id).value)});
-['fami','unk','exCafe','exBar'].forEach(id=>{const v=store.get(id);if(v!==null)$(id).checked=v==='1';$(id).onchange=()=>store.set(id,$(id).checked?'1':'0')});
+['fami','unk'].forEach(id=>{const v=store.get(id);if(v!==null)$(id).checked=v==='1';$(id).onchange=()=>store.set(id,$(id).checked?'1':'0')});
 $('optbtn').onclick=()=>{$('opts').hidden=!$('opts').hidden};
 /* 検索回数は中継(Cloudflare Worker)が全端末の合計で数える。上限に達すると中継が検索を断る */
 const WORKER='https://meshi-roulette-proxy.meshi-roulette-proxy.workers.dev';
@@ -246,7 +264,7 @@ async function placesMany(queries){
   if(DEMO)return Promise.all(queries.map(demoPlaces));
   let r;
   try{r=await fetch(WORKER+'/search',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({textQueries:queries,locationRestriction:box(st.lat,st.lng,RADIUS[$('range').value])})})}
+    body:JSON.stringify({anyTime:ANYTIME,textQueries:queries,locationRestriction:box(st.lat,st.lng,RADIUS[$('range').value])})})}
   catch(e){throw new Error('通信できませんでした（電波を確認してください）')}
   const d=await r.json().catch(()=>({}));
   if(d._usage)showUsage(d._usage.n,d._usage.limit);
@@ -279,12 +297,12 @@ function filterShops(list){
   const seen=new Map();list.forEach(p=>{if(!seen.has(p.id))seen.set(p.id,p)});
   const yen=+$('yen').value;
   /* 今やっている店だけ。営業時間が分からない店は、営業中と確認できないので除く */
-  let arr=[...seen.values()].filter(p=>(!p.businessStatus||p.businessStatus==='OPERATIONAL')&&p.displayName&&p.currentOpeningHours&&p.currentOpeningHours.openNow===true);
+  let arr=[...seen.values()].filter(p=>(!p.businessStatus||p.businessStatus==='OPERATIONAL')&&p.displayName&&(ANYTIME||(p.currentOpeningHours&&p.currentOpeningHours.openNow===true)));
   if(!$('fami').checked)arr=arr.filter(p=>!FAMIRE.some(w=>p.displayName.text.includes(w)));
   const exTypes=excluded().flatMap(e=>e.types);
   arr=arr.filter(p=>!exTypes.includes(p.primaryType)).filter(p=>priceOk(p,yen));
   return arr.slice(0,SHOP_COUNT).map(p=>({name:p.displayName.text,genre:p.primaryTypeDisplayName&&p.primaryTypeDisplayName.text,price:priceText(p),
-    rating:p.rating?`★${p.rating}（${p.userRatingCount||0}件）`:'',url:p.googleMapsUri,site:p.websiteUri,close:closeTime(p),priceUnknown:!p.priceRange&&!(p.priceLevel&&LEVEL[p.priceLevel]),kitchen:kitchenClose(p),
+    rating:p.rating?`★${p.rating}（${p.userRatingCount||0}件）`:'',url:p.googleMapsUri,site:p.websiteUri,open:!!(p.currentOpeningHours&&p.currentOpeningHours.openNow===true),close:closeTime(p),priceUnknown:!p.priceRange&&!(p.priceLevel&&LEVEL[p.priceLevel]),kitchen:kitchenClose(p),
     _d:p.location?dist(st.lat,st.lng,p.location.latitude,p.location.longitude):0}));
 }
 async function fetchShops(genres){
@@ -355,19 +373,19 @@ function showLoading(on,title,text){
 }
 
 /* ---------- 流れ ---------- */
-function setBusy(b){st.busy=b;['goGenre','goShop','againShop','againGenre','loc'].forEach(id=>$(id).disabled=b)}
+function setBusy(b){st.busy=b}
 /* 除外する店の種類（Googleの primaryType）。ジャンルを明示的に選んだときは、そのジャンルは除外しない */
-const EXC={exCafe:{label:'カフェ・スイーツ',types:['cafe','coffee_shop','tea_house','bakery','dessert_restaurant','dessert_shop','ice_cream_shop','confectionery']},
-  exBar:{label:'バー・カクテル',types:['bar','pub','wine_bar','night_club']}};
+const EXC=[{label:'カフェ・スイーツ',types:['cafe','coffee_shop','tea_house','bakery','dessert_restaurant','dessert_shop','ice_cream_shop','confectionery']},
+  {label:'バー・カクテル',types:['bar','pub','wine_bar','night_club']}];
 function selected(){return GENRES.filter(g=>g.el.getAttribute('aria-pressed')==='true')}
-function excluded(){const sel=new Set(selected().map(g=>g.label));return Object.keys(EXC).filter(id=>$(id).checked&&!sel.has(EXC[id].label)).map(id=>EXC[id])}
-function pool(){const sel=selected();if(sel.length)return sel;const ex=excluded().map(e=>e.label);return GENRES.filter(g=>!ex.includes(g.label))}
-async function loadShops(genres,title){
-  setBusy(true);showLoading(true,title,genres&&genres.length===1?`${genres[0].label}のお店を取得中…`:'お店を取得中…');
-  try{st.shops=await fetchShops(genres)}finally{setBusy(false);showLoading(false)}
+function excluded(){const sel=new Set(selected().map(g=>g.label));if(!sel.size)return [];return EXC.filter(e=>!sel.has(e.label))}
+function pool(){const sel=selected();return sel.length?sel:GENRES}   // 何も選ばなければ全ジャンル
+async function loadShops(genres,title,my){
+  showLoading(true,title,genres&&genres.length===1?`${genres[0].label}のお店を取得中…`:'お店を取得中…');
+  try{const r=await fetchShops(genres);if(my!==st.round)throw CANCEL;st.shops=r}finally{if(my===st.round)showLoading(false)}
 }
-async function runShop(genres,reuse){
-  if(!reuse){st.shopTitle=genres&&genres.length===1?`お店ルーレット（${genres[0].label}）`:'お店ルーレット';await loadShops(genres,st.shopTitle)}
+async function runShop(genres,reuse,my){
+  if(!reuse){st.shopTitle=genres&&genres.length===1?`お店ルーレット（${genres[0].label}）`:'お店ルーレット';await loadShops(genres,st.shopTitle,my)}
   if(!st.shops.length)return 'empty';
   setWheel(st.shops.map(s=>s.name),st.shopTitle);
   const s=st.shops[await playWheel()];
@@ -375,7 +393,7 @@ async function runShop(genres,reuse){
   const sh=$('shop');sh.innerHTML='';
   const add=(cls,txt)=>{const d=document.createElement('div');d.className=cls;d.textContent=txt;sh.appendChild(d)};
   add('meta',[s.genre,s.price,s.rating].filter(Boolean).join(' ／ '));
-  add('meta',[`営業中${s.close?`（${s.close}まで）`:''}`,s.kitchen?`ラストオーダーの目安 ${s.kitchen}（キッチンの営業時間）`:'',`現在地から約${Math.round(s._d||0)}m`].filter(Boolean).join(' ／ '));
+  add('meta',[s.open?`営業中${s.close?`（${s.close}まで）`:''}`:'営業時間外または不明（テスト）',s.kitchen?`ラストオーダー目安(キッチン) ${s.kitchen}`:'',`現在地から約${Math.round(s._d||0)}m`].filter(Boolean).join(' ／ '));
   st.free=!!s.priceUnknown;     // 価格が不明な店が当たったら、連打なしでもう一回
   $('againShop').textContent=st.free?'価格が不明なのでもう一回（連打なし）':'お店をもう一回';
   const lk=document.createElement('div');lk.className='row';
@@ -384,14 +402,15 @@ async function runShop(genres,reuse){
   return 'ok';
 }
 /* ジャンルルーレットに出す前に、各ジャンルの店を調べる。今やっている店が1つも無いジャンルは、最初から出さない */
-async function loadGenres(){
+async function loadGenres(my){
   const p=pool();
-  setBusy(true);showLoading(true,'ジャンルルーレット','ジャンルごとのお店を調べています…');
+  showLoading(true,'ジャンルルーレット','ジャンルごとのお店を調べています…');
   try{
     const lists=await placesMany(p.map(g=>g.q));
+    if(my!==st.round)throw CANCEL;
     st.byGenre=new Map();
     p.forEach((g,i)=>{const shops=filterShops(lists[i]||[]);if(shops.length)st.byGenre.set(g.label,shops)});
-  }finally{setBusy(false);showLoading(false)}
+  }finally{if(my===st.round)showLoading(false)}
 }
 async function runGenre(){
   const p=pool().filter(g=>st.byGenre&&st.byGenre.has(g.label));
@@ -399,19 +418,24 @@ async function runGenre(){
   setWheel(p.map(g=>g.label),'ジャンルルーレット');
   const g=p[await playWheel()];st.genre=g;
   st.shops=st.byGenre.get(g.label);st.shopTitle=`お店ルーレット（${g.label}）`;
-  await runShop(null,true);            // 店は調べ済み。お店ルーレットを出して、タップを待つ
+  await runShop(null,true,st.round);            // 店は調べ済み。お店ルーレットを出して、タップを待つ
   $('againGenre').hidden=false;
 }
 async function start(mode){
-  if(st.busy)return;
-  cancelWheel();say('');$('opts').hidden=true;$('optbtn').hidden=false;
+  const my=++st.round;                 // 押した瞬間に、進行中の処理は破棄して最初からやり直す
+  cancelWheel();say('');$('opts').hidden=true;$('optbtn').hidden=false;document.body.classList.add('round');
   try{
-    if(st.lat==null){setBusy(true);try{await getLoc()}finally{setBusy(false)}}
-    st.mode=mode;st.empty=new Set();
-    const sel=GENRES.filter(g=>g.el.getAttribute('aria-pressed')==='true');
+    if(st.lat==null){await getLoc();if(my!==st.round)throw CANCEL}
+    st.mode=mode;
+    const sel=selected();
     st.single=sel.length===1;
-    if(mode==='genre'&&!st.single){await loadGenres();await runGenre()}
-    else{const gs=mode==='genre'?sel:(sel.length?sel:null);const r=await runShop(gs);if(r==='empty')say('今やっている店が見つかりません。予算・範囲・ジャンルを変えてください',true)}
+    if(mode==='genre'&&!st.single){await loadGenres(my);await runGenre()}
+    else{
+      // 初期の選択（カフェ・バーだけ外れた状態）は、広く1回で探して種類で除く。それ以外に絞ったときは、選んだジャンルごとに探す
+      const broad=!sel.length||GENRES.every(g=>sel.includes(g)||EXC.some(e=>e.label===g.label));
+      const gs=mode==='genre'?sel:(broad?null:sel);
+      const r=await runShop(gs,false,my);if(r==='empty')say('条件に合う店が見つかりません。予算・範囲・ジャンルを変えてください',true)
+    }
     afterRun();
   }catch(e){if(e!==CANCEL)say(e.message,true)}
 }
