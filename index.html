@@ -151,7 +151,7 @@ details summary{padding:4px 0;font-size:15px}
 </head>
 <body>
 <main>
-  <div class="top"><h1>メシルーレット<small id="ver"></small></h1><button class="btn ghost small" id="optbtn" type="button" hidden>⚙ 設定</button></div>
+  <div class="top"><h1>メシルーレット</h1><button class="btn ghost small" id="optbtn" type="button" hidden>⚙ 設定</button></div>
 
   <section class="card" id="opts" aria-label="条件">
     <div class="row">
@@ -180,10 +180,6 @@ details summary{padding:4px 0;font-size:15px}
       <div class="advbody">
         <label class="chk"><input type="checkbox" id="fami" checked> ファミレスを含める</label>
         <label class="chk"><input type="checkbox" id="unk" checked> 価格が不明な店も含める</label>
-        <div id="testbox" hidden>
-          <div class="status" id="cachest"></div>
-          <button class="btn ghost small" id="clearCache" type="button">取得済みの店を消して、次は検索し直す</button>
-        </div>
         <div>
           <div class="lbl">ジャンルで絞る（色が付いたジャンルだけがルーレットに入る。1つだけ選ぶとジャンルルーレットを飛ばす）</div>
           <div class="chips" id="chips" style="margin-top:6px"></div>
@@ -213,7 +209,7 @@ details summary{padding:4px 0;font-size:15px}
     </div>
   </section>
 
-  <footer>お店情報: <a href="https://www.google.com/maps" target="_blank" rel="noopener">Google マップ</a><span id="foot"></span></footer>
+  <footer>お店情報: <a href="https://www.google.com/maps" target="_blank" rel="noopener">Google マップ</a></footer>
 </main>
 
 <div id="mash" hidden role="dialog" aria-label="もう一回の連打">
@@ -231,13 +227,8 @@ details summary{padding:4px 0;font-size:15px}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 'use strict';
-const Q=new URLSearchParams(location.search);
-const TEST=Q.has('test'), DEMO=Q.has('demo');
-const MASH_TOTAL=TEST?30:300;          // 本番300回、?test=1 で30回
+const MASH_TOTAL=300;                  // もう一回に必要な連打の回数
 const SHOP_COUNT=15;
-const ANYTIME=TEST;   // テスト段階では、営業時間外の店も出す
-document.getElementById('ver').textContent=TEST?'テスト(30回)':'';
-if(TEST)document.getElementById('foot').textContent='（テスト中は営業時間外も出す）';
 
 /* ---- ジャンル(あなたが選んだ15件)。qはGoogleマップの検索語 ---- */
 const GENRES=[
@@ -253,13 +244,6 @@ const $=id=>document.getElementById(id);
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 const st={round:0,src:null,pin:null,lat:null,lng:null,busy:false,mode:null,genre:null,shops:[],lastPool:null,empty:new Set(),single:false};
 const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
-/* テスト中は、取得済みの店（ブラウザに保存）だけで動かし、検索し直さない（デモとは別に保存） */
-const CK='meshiTestAll'+(DEMO?'-demo':'');
-let cacheAll=null;
-if(ANYTIME){try{const v=JSON.parse(store.get(CK)||'null');if(Array.isArray(v)&&v.length)cacheAll=v}catch(e){}}
-function updCache(){const el=document.getElementById('cachest');if(el)el.textContent=cacheAll?`テスト: 取得済みの${cacheAll.length}件だけで動かします（検索し直しません）`:'テスト: まだ取得していません（最初の1回だけ検索して保存します）'}
-function saveCache(list){const seen=new Map();(cacheAll||[]).concat(list).forEach(x=>{if(!seen.has(x.id))seen.set(x.id,x)});cacheAll=[...seen.values()];store.set(CK,JSON.stringify(cacheAll));store.set(CK+'src',String(st.src));updCache()}
-
 /* ---------- 画面の部品 ---------- */
 const chipsEl=$('chips');
 const DEFAULT_OFF=['カフェ・スイーツ','バー・カクテル'];     // 最初は、この2つ以外が選ばれている
@@ -280,7 +264,6 @@ function showUsage(n,limit){
     :`今月の検索 ${n}/${limit}回（全端末の合計。上限で自動停止、有料にはなりません）`;
 }
 async function fetchUsage(){
-  if(DEMO){$('usage').textContent='デモ表示です（検索回数は数えません）';return}
   try{const r=await fetch(WORKER+'/usage');const d=await r.json();showUsage(d.n,d.limit)}
   catch(e){$('usage').textContent='検索回数を取得できませんでした'}
 }
@@ -289,7 +272,6 @@ const say=(t,err)=>{$('msg').textContent=t||'';$('msg').className='status'+(err?
 /* ---------- 現在地 ---------- */
 function getLoc(){
   return new Promise((res,rej)=>{
-    if(DEMO){st.lat=35.6812;st.lng=139.7671;$('locst').textContent='現在地(デモ): 東京駅付近';return res()}
     if(!navigator.geolocation)return rej(new Error('この端末では現在地を取得できません'));
     $('locst').textContent='現在地を取得中…';
     navigator.geolocation.getCurrentPosition(p=>{
@@ -300,7 +282,6 @@ function getLoc(){
   });
 }
 async function geocode(q){
-  if(DEMO)return {name:q,address:'（デモ）',lat:35.7295,lng:139.7109};
   const d=await callWorker('/geocode',{query:q});
   if(!d.place)throw new Error(`「${q}」の場所が見つかりませんでした。駅名や住所を変えてください`);
   return d.place;
@@ -314,10 +295,9 @@ async function resolveSource(my){
   else if(q){const pl=await geocode(q);if(my!==st.round)throw CANCEL;st.lat=pl.lat;st.lng=pl.lng;$('locst').textContent=`場所: ${pl.name}${pl.address?`（${pl.address}）`:''}`}
   else{await getLoc();if(my!==st.round)throw CANCEL}
   st.src=want;
-  if(cacheAll&&store.get(CK+'src')!==want){cacheAll=null;store.set(CK,'');updCache()}   // テスト用の保存は、別の場所のものなら捨てる
   if(typeof mapShow==='function')mapShow(st.lat,st.lng,!!st.pin)
 }
-$('loc').onclick=async()=>{$('place').value='';st.pin=null;try{await getLoc();if(typeof mapShow==='function')mapShow(st.lat,st.lng,false);st.src='gps';if(cacheAll&&store.get(CK+'src')!=='gps'){cacheAll=null;store.set(CK,'');updCache()}}catch(e){say(e.message,true)}};
+$('loc').onclick=async()=>{$('place').value='';st.pin=null;try{await getLoc();if(typeof mapShow==='function')mapShow(st.lat,st.lng,false);st.src='gps';}catch(e){say(e.message,true)}};
 
 /* ---------- Google Places API (New) ---------- */
 const RADIUS={1:300,2:500,3:1000,4:2000,5:3000};
@@ -327,7 +307,7 @@ function box(lat,lng,r){const dl=r/111320,dn=r/(111320*Math.cos(lat*Math.PI/180)
   return {rectangle:{low:{latitude:lat-dl,longitude:lng-dn},high:{latitude:lat+dl,longitude:lng+dn}}}}
 async function callWorker(path,body){
   let r;
-  try{r=await fetch(WORKER+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({anyTime:ANYTIME,...body})})}
+  try{r=await fetch(WORKER+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})}
   catch(e){throw new Error('通信できませんでした（電波を確認してください）')}
   const d=await r.json().catch(()=>({}));
   if(d._usage)showUsage(d._usage.n,d._usage.limit);
@@ -337,17 +317,14 @@ async function callWorker(path,body){
 }
 const rectBody=()=>({locationRestriction:box(st.lat,st.lng,RADIUS[$('range').value])});
 async function placesMany(queries){
-  if(DEMO)return Promise.all(queries.map(demoPlaces));
   return (await callWorker('/search',{textQueries:queries,...rectBody()})).results||[];
 }
 /* 広く30件（10件ずつ3ページ）。ジャンルは店の種類と名前で振り分ける */
 async function broadPlaces(){
-  if(DEMO)return demoPlaces('レストラン');
   return (await callWorker('/broad',{query:'レストラン',pages:3,pageSize:10,...rectBody()})).places||[];
 }
 /* 店の種類を複数まとめて指定して、1回で探す */
 async function nearbyPlaces(types){
-  if(DEMO)return demoPlaces('ラーメン');
   return (await callWorker('/nearby',{types,circle:{center:{latitude:st.lat,longitude:st.lng},radius:RADIUS[$('range').value]}})).places||[];
 }
 /* 店をジャンルに振り分ける。順番が先のものを優先（まず店の主な種類、次に他の種類、最後に店名）。
@@ -403,32 +380,17 @@ function filterShops(list){
   const seen=new Map();list.forEach(p=>{if(!seen.has(p.id))seen.set(p.id,p)});
   const yen=+$('yen').value;
   /* 今やっている店だけ。営業時間が分からない店は、営業中と確認できないので除く */
-  let arr=[...seen.values()].filter(p=>(!p.businessStatus||p.businessStatus==='OPERATIONAL')&&p.displayName&&(ANYTIME||(p.currentOpeningHours&&p.currentOpeningHours.openNow===true)));
+  let arr=[...seen.values()].filter(p=>(!p.businessStatus||p.businessStatus==='OPERATIONAL')&&p.displayName&&p.currentOpeningHours&&p.currentOpeningHours.openNow===true);
   if(!$('fami').checked)arr=arr.filter(p=>!FAMIRE.some(w=>p.displayName.text.includes(w)));
   const exTypes=excluded().flatMap(e=>e.types);
   arr=arr.filter(p=>!exTypes.includes(p.primaryType)).filter(p=>priceOk(p,yen));
   return arr.slice(0,SHOP_COUNT).map(p=>({name:p.displayName.text,genre:p.primaryTypeDisplayName&&p.primaryTypeDisplayName.text,price:priceText(p),
-    rating:p.rating?`★${p.rating}（${p.userRatingCount||0}件）`:'',url:p.googleMapsUri,site:p.websiteUri,open:!!(p.currentOpeningHours&&p.currentOpeningHours.openNow===true),close:closeTime(p),priceUnknown:!p.priceRange&&!(p.priceLevel&&LEVEL[p.priceLevel]),kitchen:kitchenClose(p),
+    rating:p.rating?`★${p.rating}（${p.userRatingCount||0}件）`:'',url:p.googleMapsUri,site:p.websiteUri,close:closeTime(p),priceUnknown:!p.priceRange&&!(p.priceLevel&&LEVEL[p.priceLevel]),kitchen:kitchenClose(p),
     _d:p.location?dist(st.lat,st.lng,p.location.latitude,p.location.longitude):0}));
 }
 async function fetchShops(genres){
-  if(ANYTIME&&cacheAll){      // テスト中: 取得済みの店だけで選ぶ
-    const sel=genres&&genres.length?new Set(genres.map(g=>g.label)):null;
-    return filterShops(sel?cacheAll.filter(x=>sel.has(classify(x))):cacheAll);
-  }
   const lists=await placesMany((genres&&genres.length?genres:[{q:'レストラン'}]).map(g=>g.q));
-  const flat=lists.flat();if(ANYTIME)saveCache(flat);
-  return filterShops(flat);
-}
-
-/* デモ用のにせデータ（?demo=1 のときだけ使う） */
-function demoPlaces(q){
-  const names=['麺屋 さくら亭','ガスト 駅前店','中華 龍門','トラットリア ソーレ','焼肉 大黒','和食 ほたる','サイゼリヤ 大通り店','韓国食堂 ソウル','洋食 グリル青木','カフェ ひだまり','居酒屋 とりまる','もんじゃ 月島屋','創作 一献','バル ラ・ルナ','ラーメン 一心','タイ食堂 ミンガラ','寿司 かもめ','定食 まんぷく','ステーキ 肉匠','うどん 讃岐や'];
-  const lv=['PRICE_LEVEL_INEXPENSIVE','PRICE_LEVEL_MODERATE','PRICE_LEVEL_EXPENSIVE',undefined];
-  const n=q.startsWith('洋食')?0:20;const out=[];
-  for(let i=0;i<n;i++)out.push({id:'d'+q+i,displayName:{text:names[i%names.length]+(i>=names.length?'2号店':'')},location:{latitude:st.lat+(i%7-3)*.0006,longitude:st.lng+(i%5-2)*.0006},
-    rating:3.5+(i%6)/4,userRatingCount:20+i*7,priceLevel:lv[i%4],primaryTypeDisplayName:{text:q.split(' ')[0]},primaryType:i%9===8?'cafe':i%11===10?'bar':'restaurant',currentSecondaryOpeningHours:i%4===1?[{secondaryHoursType:'KITCHEN',nextCloseTime:new Date(Date.now()+2*36e5).toISOString()}]:undefined,googleMapsUri:'https://maps.google.com/',websiteUri:i%3?'https://example.com/':undefined,businessStatus:'OPERATIONAL',currentOpeningHours:i%7===6?{openNow:false}:i%5===0?undefined:{openNow:true,nextCloseTime:new Date(Date.now()+3*36e5).toISOString()}});
-  return new Promise(r=>setTimeout(()=>r(out),300));
+  return filterShops(lists.flat());
 }
 
 /* ---------- ルーレット ---------- */
@@ -543,7 +505,7 @@ async function runShop(genres,reuse,my){
   const sh=$('shop');sh.innerHTML='';
   const add=(cls,txt)=>{const d=document.createElement('div');d.className=cls;d.textContent=txt;sh.appendChild(d)};
   add('meta',[s.genre,s.price,s.rating].filter(Boolean).join(' ／ '));
-  add('meta',[s.open?`営業中${s.close?`（${s.close}まで）`:''}`:'営業時間外または不明（テスト）',s.kitchen?`ラストオーダー目安(キッチン) ${s.kitchen}`:'',`現在地から約${Math.round(s._d||0)}m`].filter(Boolean).join(' ／ '));
+  add('meta',[`営業中${s.close?`（${s.close}まで）`:''}`,s.kitchen?`ラストオーダー目安(キッチン) ${s.kitchen}`:'',`現在地から約${Math.round(s._d||0)}m`].filter(Boolean).join(' ／ '));
   st.free=!!s.priceUnknown;     // 価格が不明な店が当たったら、連打なしでもう一回
   $('againShop').textContent=st.free?'価格が不明なのでもう一回（連打なし）':'お店をもう一回';
   const lk=document.createElement('div');lk.className='row';
@@ -571,19 +533,14 @@ async function loadGenres(my){
   try{
     const raw=new Map();
     const add=list=>list.forEach(x=>{const g=classify(x);if(!g)return;if(!raw.has(g))raw.set(g,[]);const a=raw.get(g);if(!a.some(y=>y.id===x.id))a.push(x)});
-    if(ANYTIME&&cacheAll){add(cacheAll)}        // テスト中: 取得済みの店だけで動かす
-    else{
-      const got=[];const addNew=l=>{got.push(...l);add(l)};
-      addNew(await broadPlaces());
+    add(await broadPlaces());
+    if(my!==st.round)throw CANCEL;
+    const missing=pl.filter(g=>!filterShops(raw.get(g.label)||[]).length);
+    const types=[...new Set(missing.flatMap(g=>nearbyTypesOf(g.label)))];
+    if(types.length){
+      $('loadtxt').textContent='見つからなかったジャンルをまとめて探しています…';
+      add(await nearbyPlaces(types));
       if(my!==st.round)throw CANCEL;
-      const missing=pl.filter(g=>!filterShops(raw.get(g.label)||[]).length);
-      const types=[...new Set(missing.flatMap(g=>nearbyTypesOf(g.label)))];
-      if(types.length){
-        $('loadtxt').textContent='見つからなかったジャンルをまとめて探しています…';
-        addNew(await nearbyPlaces(types));
-        if(my!==st.round)throw CANCEL;
-      }
-      if(ANYTIME)saveCache(got);
     }
         st.rawByGenre=raw;st.byGenre=new Map();
     pl.forEach(g=>{const shops=filterShops(raw.get(g.label)||[]);if(shops.length)st.byGenre.set(g.label,shops)});
@@ -605,7 +562,7 @@ async function runGenre(){
   // 裏でそのジャンルを調べ直す（調べ直せなくても、調べ済みの店で続ける）
   let done=false;
   const rp=(async()=>{
-    let fresh=[];if(!(ANYTIME&&cacheAll)){try{fresh=(await placesMany([g.q]))[0]||[]}catch(e){fresh=[]}}
+    let fresh=[];try{fresh=(await placesMany([g.q]))[0]||[]}catch(e){fresh=[]}
     const known=(st.rawByGenre&&st.rawByGenre.get(g.label))||[];
     let shops=filterShops(fresh.concat(known));if(!shops.length)shops=st.byGenre.get(g.label)||[];
     done=true;return shops;
@@ -745,7 +702,6 @@ $('mapq').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();
 $('range').addEventListener('change',()=>{if(areaCircle){areaCircle.setRadius(RADIUS[$('range').value]);map.fitBounds(areaCircle.getBounds(),{padding:[12,12]})}});
 $('place').addEventListener('input',()=>{st.pin=null;if(map&&pinMarker){map.removeLayer(pinMarker);pinMarker=null}if(map&&areaCircle){map.removeLayer(areaCircle);areaCircle=null}});
 drawWheel();fetchUsage();
-if(ANYTIME){$('testbox').hidden=false;updCache();$('clearCache').onclick=()=>{cacheAll=null;st.byGenre=null;st.rawByGenre=null;store.set(CK,'');updCache()}}
 </script>
 </body>
 </html>
