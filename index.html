@@ -147,6 +147,17 @@ details summary{padding:4px 0;font-size:15px}
 #mapbox.full{position:fixed;inset:0;z-index:55;background:var(--bg);gap:8px;
   padding:max(12px,env(safe-area-inset-top,0px)) max(12px,env(safe-area-inset-right,0px)) max(12px,env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px))}
 #mapbox.full #map{flex:1 1 auto;height:auto;min-height:0}
+#genreRe{width:100%;flex:none;font-size:16px;padding:10px 12px}
+/* 条件に合う店が無いとき: 落ち込みの縦線（墨の線がたれる）で大きく知らせる */
+.empty{width:100%;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;padding-bottom:6px}
+.empty[hidden]{display:none}
+#drip{width:100%;height:120px;display:block;color:var(--fg);border-radius:10px 10px 0 0}
+#drip .w1{fill:color-mix(in srgb,var(--fg) 22%,transparent)}
+#drip .w2{fill:color-mix(in srgb,var(--fg) 11%,transparent)}
+#drip line{stroke:currentColor;stroke-width:5;stroke-linecap:round}
+.empty .et{font-family:var(--display);font-weight:900;font-size:clamp(26px,8vw,38px);line-height:1.3}
+.empty .es{font-size:14px;color:var(--muted)}
+.empty .btn{width:100%;flex:none}
 </style>
 </head>
 <body>
@@ -202,10 +213,17 @@ details summary{padding:4px 0;font-size:15px}
     <div class="reslab" id="reslab"></div>
     <div class="result" id="result"></div>
     <button class="btn" id="nextBtn" type="button" hidden>タップしてお店決めへ</button>
+    <button class="btn" id="genreRe" type="button" hidden>ジャンルから選び直す</button>
+    <div class="empty" id="empty" hidden>
+      <svg id="drip" viewBox="0 0 400 150" preserveAspectRatio="none" aria-hidden="true"></svg>
+      <div class="et">条件に合うお店は<br>見つかりません</div>
+      <div class="es">予算・探す範囲・ジャンルを変えてみてください</div>
+      <button class="btn" id="emptyBack" type="button">条件を変えてやり直す</button>
+    </div>
     <div class="shop" id="shop" hidden></div>
     <div class="row" id="again" hidden style="width:100%">
-      <button class="btn" id="againShop" type="button">お店をもう一回</button>
-      <button class="btn sub" id="againGenre" type="button">ジャンルをもう一回</button>
+      <button class="btn sub" id="againShop" type="button">お店をもう一回</button>
+      <button class="btn" id="againGenre" type="button">ジャンルから選び直す</button>
     </div>
   </section>
 
@@ -227,7 +245,8 @@ details summary{padding:4px 0;font-size:15px}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 'use strict';
-const MASH_TOTAL=300;                  // もう一回に必要な連打の回数
+const MASH_SHOP=100;                   // お店をもう一回に必要な連打の回数
+const MASH_GENRE=300;                  // ジャンルから選び直す（初期画面に戻る）に必要な連打の回数
 const SHOP_COUNT=15;
 
 /* ---- ジャンル(あなたが選んだ15件)。qはGoogleマップの検索語 ---- */
@@ -403,9 +422,12 @@ function drawWheel(){
   wheelLabels.forEach((t,i)=>{
     ctx.beginPath();ctx.moveTo(0,0);ctx.arc(0,0,R-6,i*step,(i+1)*step);ctx.closePath();
     ctx.fillStyle=(i===n-1&&i%8===0&&n>1)?PAL[4]:PAL[i%8];ctx.fill();ctx.strokeStyle='#fff';ctx.lineWidth=4;ctx.stroke();
-    ctx.save();ctx.rotate(i*step+step/2);ctx.textAlign='right';ctx.textBaseline='middle';
+    ctx.save();ctx.rotate(i*step+step/2);ctx.textAlign='left';ctx.textBaseline='middle';
     const fs=n>12?30:n>8?36:44;ctx.font=`900 ${fs}px "Zen Maru Gothic",sans-serif`;ctx.fillStyle='#fff';ctx.shadowColor='rgba(0,0,0,.55)';ctx.shadowBlur=5;
-    const s=t.length>9?t.slice(0,9)+'…':t;ctx.fillText(s,R-34,0);ctx.restore();
+    // 先頭の文字は中心のハブのすぐ外から描き、外周に収まらない後ろを「…」にする（先頭が隠れない）
+    const x0=R*.07+34,maxW=R-34-x0;let s=t;
+    if(ctx.measureText(s).width>maxW){while(s.length>1&&ctx.measureText(s+'…').width>maxW)s=s.slice(0,-1);s+='…'}
+    ctx.fillText(s,x0,0);ctx.restore();
   });
   ctx.restore();
 }
@@ -475,14 +497,28 @@ function confetti(ms){
 /* 結果をでかでかと出す（ルーレットは隠す） */
 function showResult(name,label){$('reslab').textContent=label;$('result').textContent=name;$('wheelbox').hidden=true;$('hint').textContent='';confetti(3800)}
 /* ルーレットを作って表示する。回さない（タップ待ち） */
-function setWheel(labels,title){wheelLabels=labels;$('stage').hidden=false;$('stitle').textContent=title;$('result').textContent='';$('reslab').textContent='';$('nextBtn').hidden=true;$('shop').hidden=true;$('again').hidden=true;$('hint').textContent='';
+function setWheel(labels,title){wheelLabels=labels;$('stage').hidden=false;$('stitle').textContent=title;$('result').textContent='';$('reslab').textContent='';$('nextBtn').hidden=true;$('genreRe').hidden=true;$('empty').hidden=true;$('shop').hidden=true;$('again').hidden=true;$('hint').textContent='';
   $('loading').hidden=true;$('wheelbox').hidden=false;drawWheel();$('stage').scrollIntoView({behavior:'smooth',block:'start'})}
 function showLoading(on,title,text){
-  if(on){const s=$('stage');s.hidden=false;$('stitle').textContent=title||'';$('result').textContent='';$('reslab').textContent='';$('nextBtn').hidden=true;$('shop').hidden=true;$('again').hidden=true;$('hint').textContent='';$('loadtxt').textContent=text||'お店を取得中…';s.scrollIntoView({behavior:'smooth',block:'start'})}
+  if(on){const s=$('stage');s.hidden=false;$('stitle').textContent=title||'';$('result').textContent='';$('reslab').textContent='';$('nextBtn').hidden=true;$('genreRe').hidden=true;$('empty').hidden=true;$('shop').hidden=true;$('again').hidden=true;$('hint').textContent='';$('loadtxt').textContent=text||'お店を取得中…';s.scrollIntoView({behavior:'smooth',block:'start'})}
   $('wheelbox').hidden=on;$('loading').hidden=!on;
 }
 
 /* ---------- 流れ ---------- */
+/* 条件に合う店が無いとき: ルーレットの場所に大きく出す */
+function showEmpty(){
+  const s=$('stage');s.hidden=false;$('stitle').textContent='';$('result').textContent='';$('reslab').textContent='';
+  ['nextBtn','genreRe','shop','again','loading','wheelbox'].forEach(id=>$(id).hidden=true);$('hint').textContent='';
+  $('empty').hidden=false;try{s.scrollIntoView({block:'start',behavior:'smooth'})}catch(e){}
+}
+/* 初期画面に戻る（進行中の処理は破棄）。ルーレットを回し始めると開始ボタン・設定ボタンは隠れ、戻る道は連打（または店が無いとき）だけ */
+function toInitial(){
+  st.round++;cancelWheel();say('');
+  $('stage').hidden=true;$('empty').hidden=true;$('genreRe').hidden=true;$('nextBtn').hidden=true;$('again').hidden=true;
+  $('opts').hidden=false;$('optbtn').hidden=true;document.querySelector('.go').hidden=false;document.body.classList.remove('round');
+  try{window.scrollTo({top:0,behavior:'smooth'})}catch(e){}
+}
+$('emptyBack').onclick=toInitial;
 function setBusy(b){st.busy=b}
 /* 除外する店の種類（Googleの primaryType）。ジャンルを明示的に選んだときは、そのジャンルは除外しない */
 const EXC=[{label:'カフェ・スイーツ',types:['cafe','coffee_shop','tea_house','bakery','dessert_restaurant','dessert_shop','ice_cream_shop','confectionery']},
@@ -554,7 +590,7 @@ function waitNext(){
 async function runGenre(){
   const my=st.round;
   const pl=pool().filter(g=>st.byGenre&&st.byGenre.has(g.label));
-  if(!pl.length){say('今やっていて条件に合う店があるジャンルがありません。予算・範囲を変えてください',true);return}
+  if(!pl.length){showEmpty();return}
   setWheel(pl.map(g=>g.label),'ジャンルルーレット');
   const g=pl[await playWheel()];st.genre=g;
   await sleep(700);if(my!==st.round)throw CANCEL;       // 止まった位置を少し見せる
@@ -567,19 +603,18 @@ async function runGenre(){
     let shops=filterShops(fresh.concat(known));if(!shops.length)shops=st.byGenre.get(g.label)||[];
     done=true;return shops;
   })();
-  $('nextBtn').hidden=false;
-  await waitNext();$('nextBtn').hidden=true;
+  $('nextBtn').hidden=false;$('genreRe').hidden=false;
+  await waitNext();$('nextBtn').hidden=true;$('genreRe').hidden=true;
   if(!done)showLoading(true,'お店ルーレット',`${g.label}のお店を調べ直しています…`);
   const shops=await rp;
   if(my!==st.round)throw CANCEL;
   showLoading(false);
   st.shops=shops;st.shopTitle=`お店ルーレット（${g.label}）`;
   await runShop(null,true,my);
-  $('againGenre').hidden=false;
 }
 async function start(mode){
   const my=++st.round;                 // 押した瞬間に、進行中の処理は破棄して最初からやり直す
-  cancelWheel();say('');$('opts').hidden=true;$('optbtn').hidden=false;document.body.classList.add('round');
+  cancelWheel();say('');$('opts').hidden=true;$('optbtn').hidden=true;document.querySelector('.go').hidden=true;document.body.classList.add('round');   // 回し始めたら開始・設定ボタンは隠す（連打なしのやり直しを防ぐ）
   try{
     await resolveSource(my);
     st.mode=mode;
@@ -590,35 +625,34 @@ async function start(mode){
       // 初期の選択（カフェ・バーだけ外れた状態）は、広く1回で探して種類で除く。それ以外に絞ったときは、選んだジャンルごとに探す
       const broad=!sel.length||GENRES.every(g=>sel.includes(g)||EXC.some(e=>e.label===g.label));
       const gs=mode==='genre'?sel:(broad?null:sel);
-      const r=await runShop(gs,false,my);if(r==='empty')say('条件に合う店が見つかりません。予算・範囲・ジャンルを変えてください',true)
+      const r=await runShop(gs,false,my);if(r==='empty')showEmpty()
     }
     afterRun();
-  }catch(e){if(e!==CANCEL)say(e.message,true)}
+  }catch(e){if(e!==CANCEL){toInitial();say(e.message,true)}}   // 失敗したら初期画面に戻る（開始ボタンが隠れたままにならないように）
 }
 function afterRun(){
   const hasShop=!$('shop').hidden;
   $('again').hidden=!hasShop;
-  $('againGenre').hidden=!(hasShop&&st.mode==='genre'&&!st.single);
+  $('againGenre').hidden=!hasShop;
 }
 $('goGenre').onclick=()=>start('genre');
 $('goShop').onclick=()=>start('shop');
 
 /* もう一回 → 連打してから。長押しで回すを押すとルーレットが出て、タップするまで回らない */
 $('againShop').onclick=async()=>{
-  if(st.busy)return;if(!st.free&&!await mash('お店をもう一回'))return;
+  if(st.busy)return;if(!st.free&&!await mash('お店をもう一回するには連打！','もう一回',MASH_SHOP))return;
   try{await runShop(null,true);afterRun()}catch(e){if(e!==CANCEL)say(e.message,true)}
 };
-$('againGenre').onclick=async()=>{
-  if(st.busy)return;if(!await mash('ジャンルをもう一回'))return;
-  try{await runGenre();afterRun()}catch(e){if(e!==CANCEL)say(e.message,true)}
-};
+/* ジャンルから選び直す: 連打が終わったら初期画面に戻る */
+async function reGenre(){if(st.busy)return;if(await mash('ジャンルから選び直すには連打！','選び直す',MASH_GENRE,true))toInitial()}
+$('againGenre').onclick=reGenre;$('genreRe').onclick=reGenre;
 
 /* ---------- 連打画面 ---------- */
-function mash(title){
+function mash(title,label,total,direct){
   return new Promise(resolve=>{
     const ov=$('mash'),btn=$('mbtn'),num=$('mnum'),bar=$('mbar'),wrap=$('mwrap'),done=$('mdone'),hold=$('mhold'),hb=$('mholdbar'),ht=$('mholdtxt');
-    let count=0,over=false,holdT=null,holdStart=0,raf=0;
-    $('mtitle').textContent=title+'するには連打！';
+    const MASH_TOTAL=total;let count=0,over=false,holdT=null,holdStart=0,raf=0;
+    $('mtitle').textContent=title;btn.textContent=label;
     num.textContent=MASH_TOTAL;bar.style.width='0';btn.hidden=false;wrap.hidden=false;done.hidden=true;btn.style.width=btn.style.height='';
     ov.hidden=false;document.body.style.overflow='hidden';
     const cleanup=v=>{over=true;cancelAnimationFrame(raf);btn.onpointerdown=null;hold.onpointerdown=null;ov.hidden=true;document.body.style.overflow='';$('mcancel').onclick=null;resolve(v)};
@@ -632,7 +666,7 @@ function mash(title){
       fx(wrap,btn,w);try{navigator.vibrate&&navigator.vibrate(8)}catch(e){}
       if(left===0)finish();
     };
-    function finish(){confetti(3200);btn.hidden=true;wrap.hidden=true;done.hidden=false;hold.disabled=false;ht.textContent='長押しで回す';hb.style.width='0'}
+    function finish(){if(direct){confetti(1500);setTimeout(()=>cleanup(true),500);return}confetti(3200);btn.hidden=true;wrap.hidden=true;done.hidden=false;hold.disabled=false;ht.textContent='長押しで回す';hb.style.width='0'}
     // 長押し(約1秒)で初めて先に進む。連打では進まない
     hold.onpointerdown=ev=>{
       ev.preventDefault();if(hold.disabled||over)return;holdStart=performance.now();
@@ -701,6 +735,12 @@ $('mapgo').onclick=mapSearch;
 $('mapq').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();mapSearch()}});
 $('range').addEventListener('change',()=>{if(areaCircle){areaCircle.setRadius(RADIUS[$('range').value]);map.fitBounds(areaCircle.getBounds(),{padding:[12,12]})}});
 $('place').addEventListener('input',()=>{st.pin=null;if(map&&pinMarker){map.removeLayer(pinMarker);pinMarker=null}if(map&&areaCircle){map.removeLayer(areaCircle);areaCircle=null}});
+(function(){            // 落ち込みの縦線（毎回同じ形）
+  const ns='http://www.w3.org/2000/svg',svg=$('drip');let h='<path class="w1" d="M0 0H400V64C330 90 270 36 200 62S70 98 0 56Z"/><path class="w2" d="M0 0H400V92C320 116 260 64 190 90S60 124 0 84Z"/>';
+  const L=[96,52,128,70,110,44,138,80,60,118,90,48,132,74,104,56,124,86,66,112,94,50,136,78,58,120];
+  L.forEach((len,i)=>{const x=8+i*15.3;h+=`<line x1="${x.toFixed(1)}" y1="0" x2="${x.toFixed(1)}" y2="${len}"/>`});
+  svg.innerHTML=h;
+})();
 drawWheel();fetchUsage();
 </script>
 </body>
