@@ -329,7 +329,7 @@ function box(lat,lng,r){const dl=r/111320,dn=r/(111320*Math.cos(lat*Math.PI/180)
   return {rectangle:{low:{latitude:lat-dl,longitude:lng-dn},high:{latitude:lat+dl,longitude:lng+dn}}}}
 async function callWorker(path,body,retry){
   let r;const pass=store.get('pass');
-  try{r=await fetch(WORKER+path,{method:'POST',headers:{'Content-Type':'application/json',...(pass?{'X-Pass':pass}:{})},body:JSON.stringify(body)})}
+  try{r=await fetch(WORKER+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(pass?{...body,pass}:body)})}
   catch(e){throw new Error('通信できませんでした（電波を確認してください）')}
   const d=await r.json().catch(()=>({}));
   if(r.status===401){      // 合言葉が必要。この端末で一度入れれば、次からは聞かない
