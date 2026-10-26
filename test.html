@@ -348,11 +348,17 @@ const RADIUS={1:300,2:500,3:1000,4:2000,5:3000};
 const LEVEL={PRICE_LEVEL_FREE:[0,0],PRICE_LEVEL_INEXPENSIVE:[0,1500],PRICE_LEVEL_MODERATE:[1000,3500],PRICE_LEVEL_EXPENSIVE:[3000,8000],PRICE_LEVEL_VERY_EXPENSIVE:[7000,1e9]};
 function box(lat,lng,r){const dl=r/111320,dn=r/(111320*Math.cos(lat*Math.PI/180));
   return {rectangle:{low:{latitude:lat-dl,longitude:lng-dn},high:{latitude:lat+dl,longitude:lng+dn}}}}
-async function callWorker(path,body){
-  let r;
-  try{r=await fetch(WORKER+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({anyTime:ANYTIME,...body})})}
+async function callWorker(path,body,retry){
+  let r;const pass=store.get('pass');
+  try{r=await fetch(WORKER+path,{method:'POST',headers:{'Content-Type':'application/json',...(pass?{'X-Pass':pass}:{})},body:JSON.stringify({anyTime:ANYTIME,...body})})}
   catch(e){throw new Error('通信できませんでした（電波を確認してください）')}
   const d=await r.json().catch(()=>({}));
+  if(r.status===401){      // 合言葉が必要。この端末で一度入れれば、次からは聞かない
+    if(retry)store.set('pass','');
+    const w=prompt(retry?'合言葉が違います。もう一度入力してください（キャンセルで中止）':'合言葉を入力してください（この端末では一度だけ）');
+    if(!w)throw new Error('合言葉が必要です');
+    store.set('pass',w.trim());return callWorker(path,body,true)
+  }
   if(d._usage)showUsage(d._usage.n,d._usage.limit);
   if(r.status===429){if(d.n!=null)showUsage(d.n,d.limit);throw new Error(d.error||'今月の検索の上限に達しました')}
   if(!r.ok)throw new Error('検索できませんでした: '+((d.error&&(d.error.message||d.error))||r.status)+'（'+r.status+'）');
