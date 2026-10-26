@@ -213,7 +213,7 @@ details summary{padding:4px 0;font-size:15px}
     <div class="reslab" id="reslab"></div>
     <div class="result" id="result"></div>
     <button class="btn" id="nextBtn" type="button" hidden>タップしてお店決めへ</button>
-    <button class="btn" id="genreRe" type="button" hidden>ジャンルから選び直す</button>
+    <button class="btn" id="genreRe" type="button" hidden>ジャンルを選び直す</button>
     <div class="empty" id="empty" hidden>
       <svg id="drip" viewBox="0 0 400 150" preserveAspectRatio="none" aria-hidden="true"></svg>
       <div class="et">条件に合うお店は<br>見つかりません</div>
@@ -245,8 +245,11 @@ details summary{padding:4px 0;font-size:15px}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 'use strict';
-const MASH_SHOP=100;                   // お店をもう一回に必要な連打の回数
-const MASH_GENRE=300;                  // ジャンルから選び直す（初期画面に戻る）に必要な連打の回数
+/* 連打の回数はボタンごとに変える（ボタンの重さの差をつけるため） */
+const MASH_GENRE_RE=100;               // ジャンルの選び直し（ジャンルルーレットだけ回し直す）
+const MASH_SHOP_SAME=100;              // ジャンルはそのままで、お店の選び直し
+const MASH_SHOP_DIRECT=300;            // お店を直接決めた（ジャンルを回していない）あとの、お店の選び直し
+const MASH_RESET=300;                  // ジャンルから選び直す（初期画面に戻る）
 const SHOP_COUNT=15;
 
 /* ---- ジャンル(あなたが選んだ15件)。qはGoogleマップの検索語 ---- */
@@ -613,7 +616,7 @@ async function runGenre(){
   await runShop(null,true,my);
 }
 async function start(mode){
-  const my=++st.round;                 // 押した瞬間に、進行中の処理は破棄して最初からやり直す
+  const my=++st.round;st.genre=null;      // 押した瞬間に、進行中の処理は破棄して最初からやり直す
   cancelWheel();say('');$('opts').hidden=true;$('optbtn').hidden=true;document.querySelector('.go').hidden=true;document.body.classList.add('round');   // 回し始めたら開始・設定ボタンは隠す（連打なしのやり直しを防ぐ）
   try{
     await resolveSource(my);
@@ -640,12 +643,17 @@ $('goShop').onclick=()=>start('shop');
 
 /* もう一回 → 連打してから。長押しで回すを押すとルーレットが出て、タップするまで回らない */
 $('againShop').onclick=async()=>{
-  if(st.busy)return;if(!st.free&&!await mash('お店をもう一回するには連打！','もう一回',MASH_SHOP))return;
+  if(st.busy)return;if(!st.free&&!await mash('お店をもう一回するには連打！','もう一回',st.genre?MASH_SHOP_SAME:MASH_SHOP_DIRECT))return;
   try{await runShop(null,true);afterRun()}catch(e){if(e!==CANCEL)say(e.message,true)}
 };
 /* ジャンルから選び直す: 連打が終わったら初期画面に戻る */
-async function reGenre(){if(st.busy)return;if(await mash('ジャンルから選び直すには連打！','選び直す',MASH_GENRE,true))toInitial()}
-$('againGenre').onclick=reGenre;$('genreRe').onclick=reGenre;
+$('againGenre').onclick=async()=>{if(st.busy)return;if(await mash('ジャンルから選び直すには連打！','選び直す',MASH_RESET,true))toInitial()};
+/* ジャンルの選び直し（ジャンルが決まった画面から）: 連打のあと、ジャンルルーレットだけをもう一度回す */
+$('genreRe').onclick=async()=>{
+  if(st.busy)return;if(!await mash('ジャンルを選び直すには連打！','選び直す',MASH_GENRE_RE))return;
+  const my=++st.round;cancelWheel();      // 今のジャンル決定画面と、裏の調べ直しは破棄
+  try{await runGenre();afterRun()}catch(e){if(e!==CANCEL){toInitial();say(e.message,true)}}
+};
 
 /* ---------- 連打画面 ---------- */
 function mash(title,label,total,direct){
