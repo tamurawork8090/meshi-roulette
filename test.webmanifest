@@ -1,6 +1,6 @@
 {
- "name": "メシルーレット（テスト）",
- "short_name": "メシテスト",
+ "name": "どこ食う（テスト）",
+ "short_name": "どこ食うテスト",
  "start_url": "./test.html",
  "scope": "./",
  "display": "standalone",
