@@ -799,7 +799,12 @@ $('place').addEventListener('input',()=>{st.pin=null;if(map&&pinMarker){map.remo
   L.forEach((len,i)=>{const x=8+i*15.3;h+=`<line x1="${x.toFixed(1)}" y1="0" x2="${x.toFixed(1)}" y2="${len}"/>`});
   svg.innerHTML=h;
 })();
-drawWheel();fetchUsage();
+/* 起動時に合言葉を確認する。中継が合言葉を求めるときだけ聞く（空の検索で確かめるので、検索回数は使わない）。通るまで開始ボタンは押せない */
+async function gate(){
+  try{await callWorker('/geocode',{query:''})}
+  catch(e){if(e.message==='合言葉が必要です'){[$('goGenre'),$('goShop')].forEach(b=>b.disabled=true);say('合言葉が必要です。ページを再読み込みして入力してください',true)}}
+}
+drawWheel();fetchUsage();gate();
 if(ANYTIME){$('testbox').hidden=false;updCache();$('clearCache').onclick=()=>{cacheAll=null;st.byGenre=null;st.rawByGenre=null;store.set(CK,'');updCache()}}
 </script>
 </body>
