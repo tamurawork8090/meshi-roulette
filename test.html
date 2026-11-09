@@ -163,11 +163,25 @@ details summary{padding:4px 0;font-size:15px}
 .empty .et{font-family:var(--display);font-weight:900;font-size:clamp(26px,8vw,38px);line-height:1.3}
 .empty .es{font-size:14px;color:var(--muted)}
 .empty .btn{width:100%;flex:none}
+#hist{position:fixed;inset:0;z-index:56;background:var(--bg);overflow-y:auto;
+  padding:max(10px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+#hist .in{max-width:480px;margin:0 auto;display:flex;flex-direction:column;gap:10px}
+.hhead{display:flex;align-items:center;gap:8px;position:sticky;top:0;z-index:1;background:var(--bg);padding:4px 0}
+.hhead h2{font-family:var(--display);font-weight:900;font-size:20px;margin:0;flex:1 1 auto}
+.hlist{display:flex;flex-direction:column;gap:8px}
+.hitem{font:inherit;text-align:left;width:100%;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:12px;padding:10px 12px;cursor:pointer;touch-action:manipulation;display:flex;flex-direction:column;gap:2px}
+.hitem .hd,.hitem .hc{font-size:12px;color:var(--muted)}
+.hitem .hn{font-family:var(--display);font-weight:900;font-size:18px;word-break:break-word}
+.tbtns{display:flex;gap:6px}
+/* ルーレット中・履歴に出す「どの条件で探したか」 */
+.cond{font-size:13px;line-height:1.45;color:var(--fg);text-align:center;background:color-mix(in srgb,var(--fg) 7%,transparent);border-radius:8px;padding:4px 10px}
+.cond:empty{display:none}
+#cond{margin-bottom:10px}   /* ルーレットの矢印（上にはみ出す）と重ならないように */
 </style>
 </head>
 <body>
 <main>
-  <div class="top"><h1>どこ食う<small id="ver"></small></h1><button class="btn ghost small" id="optbtn" type="button" hidden>⚙ 設定</button></div>
+  <div class="top"><h1>どこ食う<small id="ver"></small></h1><span class="tbtns"><button class="btn ghost small" id="histbtn" type="button">🕘 履歴</button><button class="btn ghost small" id="optbtn" type="button" hidden>⚙ 設定</button></span></div>
 
   <section class="card" id="opts" aria-label="条件">
     <div class="row">
@@ -216,6 +230,7 @@ details summary{padding:4px 0;font-size:15px}
 
   <section class="card stage" id="stage" hidden aria-live="polite">
     <h2 id="stitle"></h2>
+    <div class="cond" id="cond"></div>
     <div class="loading" id="loading" hidden><span class="spin"></span><span id="loadtxt">お店を取得中…</span></div>
     <div class="wheelbox" id="wheelbox"><div class="pointer"></div><canvas id="cv" width="800" height="800"></canvas><div class="hub"></div></div>
     <div class="hint" id="hint"></div>
@@ -238,6 +253,24 @@ details summary{padding:4px 0;font-size:15px}
 
   <footer>お店情報: <a href="https://www.google.com/maps" target="_blank" rel="noopener">Google マップ</a><span id="foot"></span></footer>
 </main>
+
+<div id="hist" hidden role="dialog" aria-label="履歴">
+  <div class="in">
+    <div class="hhead">
+      <button class="btn ghost small" id="hback" type="button" hidden>← 一覧</button>
+      <h2>履歴</h2>
+      <button class="btn ghost small" id="hclose" type="button">閉じる</button>
+    </div>
+    <div class="hlist" id="hlist"></div>
+    <section class="card stage" id="hdetail" hidden>
+      <div class="reslab" id="hwhen"></div>
+      <div class="result" id="hname"></div>
+      <div class="cond" id="hcond"></div>
+      <div class="shop" id="hshop"></div>
+      <div class="status">営業時間・距離などは、お店が決まった時点の情報です</div>
+    </section>
+  </div>
+</div>
 
 <div id="mash" hidden role="dialog" aria-label="もう一回の連打">
   <button id="mcancel" type="button">やめる</button>
@@ -338,14 +371,15 @@ async function resolveSource(my){
   const q=$('place').value.trim();
   const want=st.pin?`pin:${st.pin.lat.toFixed(4)},${st.pin.lng.toFixed(4)}`:(q||'gps');
   if(st.src===want&&st.lat!=null)return;
-  if(st.pin){st.lat=st.pin.lat;st.lng=st.pin.lng}
-  else if(q){const pl=await geocode(q);if(my!==st.round)throw CANCEL;st.lat=pl.lat;st.lng=pl.lng;$('locst').textContent=`場所: ${pl.name}${pl.address?`（${pl.address}）`:''}`}
+  let lab='場所: 現在地';
+  if(st.pin){st.lat=st.pin.lat;st.lng=st.pin.lng;lab=st.pinName?`場所: ${st.pinName}付近（地図のピン）`:'場所: 地図のピン'}
+  else if(q){const pl=await geocode(q);if(my!==st.round)throw CANCEL;st.lat=pl.lat;st.lng=pl.lng;$('locst').textContent=`場所: ${pl.name}${pl.address?`（${pl.address}）`:''}`;lab=`場所: ${pl.name}`}
   else{await getLoc();if(my!==st.round)throw CANCEL}
-  st.src=want;
+  st.src=want;st.srcLabel=lab;
   if(cacheAll&&store.get(CK+'src')!==want){cacheAll=null;store.set(CK,'');updCache()}   // テスト用の保存は、別の場所のものなら捨てる
   if(typeof mapShow==='function')mapShow(st.lat,st.lng,!!st.pin)
 }
-$('loc').onclick=async()=>{$('place').value='';st.pin=null;try{await getLoc();if(typeof mapShow==='function')mapShow(st.lat,st.lng,false);st.src='gps';if(cacheAll&&store.get(CK+'src')!=='gps'){cacheAll=null;store.set(CK,'');updCache()}}catch(e){say(e.message,true)}};
+$('loc').onclick=async()=>{$('place').value='';st.pin=null;try{await getLoc();if(typeof mapShow==='function')mapShow(st.lat,st.lng,false);st.src='gps';st.srcLabel='場所: 現在地';if(cacheAll&&store.get(CK+'src')!=='gps'){cacheAll=null;store.set(CK,'');updCache()}}catch(e){say(e.message,true)}};
 
 /* ---------- Google Places API (New) ---------- */
 const RADIUS={1:300,2:500,3:1000,4:2000,5:3000};
@@ -444,6 +478,12 @@ function filterShops(list){
   return arr.slice(0,SHOP_COUNT).map(p=>({name:p.displayName.text,genre:p.primaryTypeDisplayName&&p.primaryTypeDisplayName.text,price:priceText(p),
     rating:p.rating?`★${p.rating}（${p.userRatingCount||0}件）`:'',url:p.googleMapsUri,site:p.websiteUri,open:!!(p.currentOpeningHours&&p.currentOpeningHours.openNow===true),close:closeTime(p),priceUnknown:!p.priceRange&&!(p.priceLevel&&LEVEL[p.priceLevel]),kitchen:kitchenClose(p),
     _d:p.location?dist(st.lat,st.lng,p.location.latitude,p.location.longitude):0}));
+}
+/* 探した条件（予算・範囲・場所）を1行にする。ルーレット中に出し、履歴にも残す */
+function condText(){
+  const yen=+$('yen').value,r=$('range'),f=n=>Math.round(n).toLocaleString('ja-JP');
+  const y=yen>0?`予算 1人${f(yen)}円（${f(yen*.7)}〜${f(yen*1.3)}円の店${$('unk').checked?'・価格不明も含む':''}）`:'予算の指定なし';
+  return `${y} ／ 範囲 ${r.options[r.selectedIndex].text}以内 ／ ${st.srcLabel||'場所: 現在地'}`;
 }
 async function fetchShops(genres){
   if(ANYTIME&&cacheAll){      // テスト中: 取得済みの店だけで選ぶ
@@ -583,6 +623,24 @@ async function loadShops(genres,title,my){
   showLoading(true,title,genres&&genres.length===1?`${genres[0].label}のお店を取得中…`:'お店を取得中…');
   try{const r=await fetchShops(genres);if(my!==st.round)throw CANCEL;st.shops=r}finally{if(my===st.round)showLoading(false)}
 }
+/* 決まったお店の情報・リンク・共有ボタンを描く（決まった直後と、履歴で同じ見た目にする） */
+function renderShop(sh,r){
+  sh.innerHTML='';
+  const add=(cls,txt)=>{if(!txt)return;const d=document.createElement('div');d.className=cls;d.textContent=txt;sh.appendChild(d)};
+  add('meta',r.metaA);add('meta',r.metaB);
+  const lk=document.createElement('div');lk.className='row';
+  [['お店のページを開く',r.site],['Googleマップで開く',r.url]].forEach(([t,u])=>{if(!u)return;const a=document.createElement('a');a.className='lk';a.href=u;a.target='_blank';a.rel='noopener';a.textContent=t;lk.appendChild(a)});
+  // 共有: お店のページとGoogleマップの両方を、店名と一緒に送る
+  const shareBtn=document.createElement('button');shareBtn.type='button';shareBtn.className='lk';shareBtn.textContent='共有する';
+  const shareText=[`${r.name}`,r.site?`お店のページ: ${r.site}`:'',r.url?`Googleマップ: ${r.url}`:''].filter(Boolean).join('\n');
+  shareBtn.onclick=async()=>{
+    try{if(navigator.share){await navigator.share({title:r.name,text:shareText});return}}catch(e){if(e&&e.name==='AbortError')return}
+    try{await navigator.clipboard.writeText(shareText);shareBtn.textContent='コピーしました';setTimeout(()=>shareBtn.textContent='共有する',2000)}
+    catch(e){shareBtn.textContent='共有できませんでした';setTimeout(()=>shareBtn.textContent='共有する',2000)}
+  };
+  lk.appendChild(shareBtn);
+  sh.appendChild(lk);sh.hidden=false;
+}
 async function runShop(genres,reuse,my){
   if(!reuse){st.shopTitle=genres&&genres.length===1?`お店ルーレット（${genres[0].label}）`:'お店ルーレット';await loadShops(genres,st.shopTitle,my)}
   if(!st.shops.length)return 'empty';
@@ -591,24 +649,13 @@ async function runShop(genres,reuse,my){
   const s=st.shops[await playWheel()];
   await sleep(700);if(rd!==st.round)throw CANCEL;       // 止まった位置を少し見せる
   showResult(s.name,'お店が決まりました');
-  const sh=$('shop');sh.innerHTML='';
-  const add=(cls,txt)=>{const d=document.createElement('div');d.className=cls;d.textContent=txt;sh.appendChild(d)};
-  add('meta',[s.genre,s.price,s.rating].filter(Boolean).join(' ／ '));
-  add('meta',[s.open?`営業中${s.close?`（${s.close}まで）`:''}`:'営業時間外または不明（テスト）',s.kitchen?`ラストオーダー目安(キッチン) ${s.kitchen}`:'',`現在地から約${Math.round(s._d||0)}m`].filter(Boolean).join(' ／ '));
+  const metaB=([s.open?`営業中${s.close?`（${s.close}まで）`:''}`:'営業時間外または不明（テスト）',s.kitchen?`ラストオーダー目安(キッチン) ${s.kitchen}`:'',`現在地から約${Math.round(s._d||0)}m`].filter(Boolean).join(' ／ '));
   st.free=!!s.priceUnknown;     // 価格が不明な店が当たったら、連打なしでもう一回
   $('againShop').textContent=st.free?'価格が不明なのでもう一回（連打なし）':'お店をもう一回';
-  const lk=document.createElement('div');lk.className='row';
-  [['お店のページを開く',s.site],['Googleマップで開く',s.url]].forEach(([t,u])=>{if(!u)return;const a=document.createElement('a');a.className='lk';a.href=u;a.target='_blank';a.rel='noopener';a.textContent=t;lk.appendChild(a)});
-  // 共有: お店のページとGoogleマップの両方を、店名と一緒に送る
-  const shareBtn=document.createElement('button');shareBtn.type='button';shareBtn.className='lk';shareBtn.textContent='共有する';
-  const shareText=[`${s.name}`,s.site?`お店のページ: ${s.site}`:'',s.url?`Googleマップ: ${s.url}`:''].filter(Boolean).join('\n');
-  shareBtn.onclick=async()=>{
-    try{if(navigator.share){await navigator.share({title:s.name,text:shareText});return}}catch(e){if(e&&e.name==='AbortError')return}
-    try{await navigator.clipboard.writeText(shareText);shareBtn.textContent='コピーしました';setTimeout(()=>shareBtn.textContent='共有する',2000)}
-    catch(e){shareBtn.textContent='共有できませんでした';setTimeout(()=>shareBtn.textContent='共有する',2000)}
-  };
-  lk.appendChild(shareBtn);
-  sh.appendChild(lk);sh.hidden=false;
+  const via=st.genre?`ジャンル「${st.genre.label}」から`:(st.mode==='genre'&&st.single&&selected()[0]?`ジャンル「${selected()[0].label}」から`:'お店を直接');
+  const rec={t:Date.now(),name:s.name,via,cond:st.cond||condText(),metaA:[s.genre,s.price,s.rating].filter(Boolean).join(' ／ '),metaB,site:s.site||'',url:s.url||''};
+  addHist(rec);
+  renderShop($('shop'),rec);
   try{$('stage').scrollIntoView({block:'start',behavior:'smooth'})}catch(e){}
   return 'ok';
 }
@@ -675,6 +722,7 @@ async function start(mode){
   cancelWheel();say('');$('opts').hidden=true;$('optbtn').hidden=true;document.querySelector('.go').hidden=true;document.body.classList.add('round');   // 回し始めたら開始・設定ボタンは隠す（連打なしのやり直しを防ぐ）
   try{
     await resolveSource(my);
+    st.cond=condText();$('cond').textContent=st.cond;
     st.mode=mode;
     const sel=selected();
     st.single=sel.length===1;
@@ -763,7 +811,7 @@ function drawPin(lat,lng,fit){
   if(fit)map.fitBounds(areaCircle.getBounds(),{padding:[12,12]});     // 探す範囲の円が全部見えるようにする
 }
 function setPin(lat,lng){
-  st.pin={lat,lng};$('place').value='';drawPin(lat,lng);
+  st.pin={lat,lng};st.pinName=null;$('place').value='';drawPin(lat,lng);
   $('locst').textContent=`場所: 地図のピン（${lat.toFixed(4)}, ${lng.toFixed(4)}）`;
 }
 /* 地図の中の検索: 駅名・住所の場所へ地図を動かして、ピンを刺す */
@@ -772,7 +820,7 @@ async function mapSearch(){
   $('mapmsg').textContent='探しています…';
   try{
     const pl=await geocode(q);
-    setPin(pl.lat,pl.lng);drawPin(pl.lat,pl.lng,true);
+    setPin(pl.lat,pl.lng);st.pinName=pl.name;drawPin(pl.lat,pl.lng,true);
     $('locst').textContent=`場所: ${pl.name}（地図のピン）`;
     $('mapmsg').textContent=`「${pl.name}」${pl.address||''} にピンを刺しました`;
   }catch(e){$('mapmsg').textContent=e.message}
@@ -809,6 +857,34 @@ async function gate(){
   try{await callWorker('/geocode',{query:''})}
   catch(e){if(e.message==='合言葉が必要です'){[$('goGenre'),$('goShop')].forEach(b=>b.disabled=true);say('合言葉が必要です。ページを再読み込みして入力してください',true)}}
 }
+/* ---------- 履歴（この端末のブラウザに保存）。お店が決まるたびに、そのときの表示内容と探した条件を残す ---------- */
+const HKEY='hist_test', HMAX=100;     // テスト版は本番と別に保存する（同じサイトなので、名前を分けないと本番の履歴に混ざる）
+/* 試す用の見本（保存はしない。確認が済んだら、この見本は消す） */
+const SAMPLE=[{t:Date.parse('2026-11-10T12:00:00+09:00'),name:'【テスト】サンプル食堂',via:'テスト用の見本',cond:'予算 1人1,500円（1,050〜1,950円の店・価格不明も含む） ／ 範囲 1km以内 ／ 場所: 現在地',
+  metaA:'和食 ／ ふつう(目安1,000〜3,500円) ／ ★4.1（123件）',metaB:'営業中（22:00まで） ／ 現在地から約350m',site:'https://example.com/',url:'https://www.google.com/maps'}];
+const histList=()=>loadHist().concat(SAMPLE);
+function loadHist(){try{const v=JSON.parse(store.get(HKEY)||'[]');return Array.isArray(v)?v:[]}catch(e){return []}}
+function addHist(r){const h=loadHist();h.unshift(r);store.set(HKEY,JSON.stringify(h.slice(0,HMAX)))}
+const fmtWhen=t=>{try{return new Date(t).toLocaleString('ja-JP',{month:'numeric',day:'numeric',weekday:'short',hour:'2-digit',minute:'2-digit',timeZone:'Asia/Tokyo'})}catch(e){return ''}};
+function renderHistList(){
+  $('hdetail').hidden=true;$('hlist').hidden=false;$('hback').hidden=true;
+  const ul=$('hlist');ul.innerHTML='';const h=histList();
+  if(!h.length){const d=document.createElement('div');d.className='status';d.textContent='まだ履歴はありません。お店が決まると、ここに残ります（この端末のブラウザだけに保存されます）';ul.appendChild(d);return}
+  h.forEach(r=>{const b=document.createElement('button');b.type='button';b.className='hitem';
+    const a=(c,t)=>{if(!t)return;const s=document.createElement('span');s.className=c;s.textContent=t;b.appendChild(s)};
+    a('hd',[fmtWhen(r.t),r.via].filter(Boolean).join(' ／ '));a('hn',r.name);a('hc',r.cond);
+    b.onclick=()=>showHistDetail(r);ul.appendChild(b)});
+}
+function showHistDetail(r){
+  $('hlist').hidden=true;$('hdetail').hidden=false;$('hback').hidden=false;
+  $('hwhen').textContent=`${fmtWhen(r.t)} に決まったお店${r.via?`（${r.via}）`:''}`;
+  $('hname').textContent=r.name;$('hcond').textContent=r.cond||'';
+  renderShop($('hshop'),r);$('hist').scrollTop=0;
+}
+function openHist(){renderHistList();$('hist').hidden=false;$('hist').scrollTop=0;document.body.style.overflow='hidden'}
+function closeHist(){$('hist').hidden=true;document.body.style.overflow=$('mapbox').classList.contains('full')?'hidden':''}
+$('histbtn').onclick=openHist;$('hclose').onclick=closeHist;$('hback').onclick=renderHistList;
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('hist').hidden){if(!$('hdetail').hidden)renderHistList();else closeHist()}});
 drawWheel();fetchUsage();gate();
 if(ANYTIME){$('testbox').hidden=false;updCache();$('clearCache').onclick=()=>{cacheAll=null;st.byGenre=null;st.rawByGenre=null;store.set(CK,'');updCache()}}
 </script>
